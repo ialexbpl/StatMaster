@@ -87,3 +87,8 @@ publish/
 
 #Documentation
 Docs/
+
+#Settings
+appsettings.json
+appsettings.Development.json
+
