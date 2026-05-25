@@ -1,0 +1,7 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/StatMaster.Agent/StatMaster.Agent.csproj" />
+    <Project Path="src/StatMaster.Protocol/StatMaster.Protocol.csproj" />
+    <Project Path="src/StatMaster.Server/StatMaster.Server.csproj" />
+  </Folder>
+</Solution>
