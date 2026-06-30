@@ -1,5 +1,7 @@
 using System.Net;
 using System.Net.Sockets;
+using System.Text;
+using StatMaster.Protocol;
 
 namespace StatMaster.Server;
 
@@ -28,6 +30,30 @@ public sealed class AgentListener //class to listen for the agent and query the 
         Console.WriteLine($"[Server] Agent connected: {client.Client.RemoteEndPoint}");
 
         using var stream = client.GetStream(); //get the stream from the client
+
+        //receiving the hello frame from the agent
+        ProtocolFrame helloFrame = await FrameCodec.ReceiveFrameAsync(stream, cancellationToken);
+        if (helloFrame.Type != MessageType.Hello)
+        {
+            throw new InvalidOperationException($"Expected Hello, got: {helloFrame.Type}");
+        }
+        // parsing the hello payload: agentId|token
+        string helloText = Encoding.UTF8.GetString(helloFrame.Payload);
+        Console.WriteLine($"[Server] Hello received: {helloText}");
+        string[] parts = helloText.Split('|');
+        if (parts.Length != 2)
+        {
+            throw new InvalidOperationException("Invalid Hello format. Expected: agentId|token");
+        }
+        string agentId = parts[0];
+        string token = parts[1];
+        // temporary token validation for MVP
+        if (!string.Equals(token, "dev-token", StringComparison.Ordinal))
+        {
+            throw new UnauthorizedAccessException("Hello token is invalid.");
+        }
+        Console.WriteLine($"[Server] Hello accepted. agentId={agentId}");
+
         return await _queryService.QueryMetricAsync(stream, keyToAsk, cancellationToken); //query the metric using the query service
     }
 }

@@ -1,4 +1,5 @@
 using System.Net.Sockets;
+using System.Text;
 using StatMaster.Protocol;
 
 namespace StatMaster.Agent;
@@ -27,6 +28,16 @@ public sealed class AgentClient
         Console.WriteLine("[Agent] Connected.");
 
         using var stream = client.GetStream(); //using the stream from the socket
+
+        //sending the hello frame to the server
+        // HELLO: agentId|token
+        const string agentId = "AGENT-01";
+        const string token = "dev-token";
+        string helloText = $"{agentId}|{token}";
+        byte[] helloPayload = Encoding.UTF8.GetBytes(helloText);
+        await FrameCodec.SendFrameAsync(stream, MessageType.Hello, helloPayload, cancellationToken);
+        Console.WriteLine($"[Agent] Hello sent: {helloText}");
+
         while (!cancellationToken.IsCancellationRequested) //receive loop until cancellation is requested
         {
             ProtocolFrame request; //declare the request frame from shared protocol
