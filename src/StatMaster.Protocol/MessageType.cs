@@ -19,3 +19,4 @@ public enum MessageType : ushort ///wskazujemy, że typ wiadomości zajmuje 2 ba
     /// <summary>Utrzymanie sesji / brak danych — opcjonalnie na później.</summary>
     Heartbeat = 4,
 }
+//Responsibility of file: shared message type contract.
