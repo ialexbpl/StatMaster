@@ -2,59 +2,79 @@ using System.Net;
 using System.Net.Sockets;
 using System.Text;
 using StatMaster.Protocol;
+using System.Net.Security;
+using System.Security.Cryptography.X509Certificates;
+using System.Security.Authentication;
+
 
 namespace StatMaster.Server;
 
-public sealed class AgentListener //class to listen for the agent and query the metric
+public sealed class AgentListener //class to listen for the agent and query the metric with certificate and expected token
 {
     private readonly int _port; //port to listen on
     private readonly MetricQueryService _queryService; //query service to query the metric /?///// ask what exactly isdone here are we defining variables or poinitng to a pllace or what
+    private readonly X509Certificate2 _serverCertificate; //certificate to use for the server
+    private readonly string _expectedToken; //expected token to use for the server
 
-//storing the dependencies like tools we are using
-    public AgentListener(int port, MetricQueryService queryService)
+
+    //storing the dependencies like tools we are using
+    public AgentListener(int port, MetricQueryService queryService, X509Certificate2 serverCertificate, string expectedToken)
     {
         _port = port;
         _queryService = queryService;
+        _serverCertificate = serverCertificate;
+        _expectedToken = expectedToken;
     }
 
-//just using this method to listen for the agent and query the metric once for testing purposes
+    //just using this method to listen for the agent and query the metric once for testing purposes with certificate and expected token
+    //along with logging the ,essages to the console later will be added to a logfile
     public async Task<string> ListenAndQueryOnceAsync(string keyToAsk, CancellationToken cancellationToken = default)
-    {
+    {   
+        //listening for the agent on the port
         using var listener = new TcpListener(IPAddress.Any, _port);
         listener.Start();
 
+        //LOGGING
         Console.WriteLine($"[Server] Listening on 0.0.0.0:{_port}");
         Console.WriteLine("[Server] Waiting for agent connection...");
 
         using var client = await listener.AcceptTcpClientAsync(cancellationToken);
+
         Console.WriteLine($"[Server] Agent connected: {client.Client.RemoteEndPoint}");
 
-        using var stream = client.GetStream(); //get the stream from the client
+        using var netStream = client.GetStream();
+        using var sslStream = new SslStream(netStream, leaveInnerStreamOpen: false, userCertificateValidationCallback: (_, _, _, _) => true);
 
-        //receiving the hello frame from the agent
-        ProtocolFrame helloFrame = await FrameCodec.ReceiveFrameAsync(stream, cancellationToken);
+        await sslStream.AuthenticateAsServerAsync(new SslServerAuthenticationOptions
+        { ServerCertificate = _serverCertificate, EnabledSslProtocols = SslProtocols.Tls12 | SslProtocols.Tls13, ClientCertificateRequired = false }, cancellationToken);
+
+        Console.WriteLine("[Server] TLS established.");
+        ProtocolFrame helloFrame = await FrameCodec.ReceiveFrameAsync(sslStream, cancellationToken);
+
         if (helloFrame.Type != MessageType.Hello)
         {
             throw new InvalidOperationException($"Expected Hello, got: {helloFrame.Type}");
         }
-        // parsing the hello payload: agentId|token
         string helloText = Encoding.UTF8.GetString(helloFrame.Payload);
+
         Console.WriteLine($"[Server] Hello received: {helloText}");
         string[] parts = helloText.Split('|');
+
         if (parts.Length != 2)
         {
             throw new InvalidOperationException("Invalid Hello format. Expected: agentId|token");
         }
         string agentId = parts[0];
+
         string token = parts[1];
-        // temporary token validation for MVP
-        if (!string.Equals(token, "dev-token", StringComparison.Ordinal))
+
+        if (!string.Equals(token, _expectedToken, StringComparison.Ordinal))
         {
             throw new UnauthorizedAccessException("Hello token is invalid.");
         }
         Console.WriteLine($"[Server] Hello accepted. agentId={agentId}");
 
-        return await _queryService.QueryMetricAsync(stream, keyToAsk, cancellationToken); //query the metric using the query service
+        return await _queryService.QueryMetricAsync(sslStream, keyToAsk, cancellationToken);
     }
 }
 //Responsibility of file: accept connection and provide stream for query flow.

@@ -1,6 +1,8 @@
 using System.Net.Sockets;
 using System.Text;
 using StatMaster.Protocol;
+using System.Net.Security;
+using System.Security.Authentication;
 
 namespace StatMaster.Agent;
 
@@ -27,15 +29,25 @@ public sealed class AgentClient
         await client.ConnectAsync(_serverHost, _serverPort); //wait for connection (stream)
         Console.WriteLine("[Agent] Connected.");
 
-        using var stream = client.GetStream(); //using the stream from the socket
+        using var netStream = client.GetStream(); //using the stream from the socket
+        using var sslStream = new SslStream(netStream, leaveInnerStreamOpen: false, userCertificateValidationCallback: (_, _, _, _) => true);
 
+        await sslStream.AuthenticateAsClientAsync(new SslClientAuthenticationOptions
+        {
+            TargetHost = _serverHost,
+            EnabledSslProtocols = SslProtocols.Tls12 | SslProtocols.Tls13
+        }, cancellationToken);
+
+        Console.WriteLine("[Agent] TLS established.");
+        
         //sending the hello frame to the server
         // HELLO: agentId|token
         const string agentId = "AGENT-01";
         const string token = "dev-token";
         string helloText = $"{agentId}|{token}";
         byte[] helloPayload = Encoding.UTF8.GetBytes(helloText);
-        await FrameCodec.SendFrameAsync(stream, MessageType.Hello, helloPayload, cancellationToken);
+
+        await FrameCodec.SendFrameAsync(sslStream, MessageType.Hello, helloPayload, cancellationToken);
         Console.WriteLine($"[Agent] Hello sent: {helloText}");
 
         while (!cancellationToken.IsCancellationRequested) //receive loop until cancellation is requested
@@ -43,7 +55,7 @@ public sealed class AgentClient
             ProtocolFrame request; //declare the request frame from shared protocol
             try
             {
-                request = await FrameCodec.ReceiveFrameAsync(stream, cancellationToken);
+                request = await FrameCodec.ReceiveFrameAsync(sslStream, cancellationToken);
             }
             catch (EndOfStreamException)
             {
@@ -51,8 +63,9 @@ public sealed class AgentClient
                 break;
             }
 
-            await _requestHandler.HandleAsync(request, stream, cancellationToken); //delegate the request to the request handler
+            await _requestHandler.HandleAsync(request, sslStream, cancellationToken); //delegate the request to the request handler
         }
     }
 }
-//Responsibility of file: connect + receive loop + dispatch.
+// Responsibility of file: establish agent-> server connection, keep receiving protocol frames in a loop,
+// and dispatch each received frame to MetricRequestHandler for processing and response.
