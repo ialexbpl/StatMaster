@@ -26,10 +26,11 @@ public sealed class AgentListener //class to listen for the agent and query the 
         _expectedToken = expectedToken;
     }
 
-    //just using this method to listen for the agent and query the metric once for testing purposes with certificate and expected token
-    //along with logging the ,essages to the console later will be added to a logfile
-    public async Task<string> ListenAndQueryOnceAsync(string keyToAsk, CancellationToken cancellationToken = default)
-    {   
+    //listens and queries many keys in one TLS session
+    public async Task<Dictionary<string, string>> ListenAndQueryManyAsync(
+        IEnumerable<string> keysToAsk,
+        CancellationToken cancellationToken = default)
+    {
         //listening for the agent on the port
         using var listener = new TcpListener(IPAddress.Any, _port);
         listener.Start();
@@ -74,7 +75,6 @@ public sealed class AgentListener //class to listen for the agent and query the 
         }
         Console.WriteLine($"[Server] Hello accepted. agentId={agentId}");
 
-        return await _queryService.QueryMetricAsync(sslStream, keyToAsk, cancellationToken);
+        return await _queryService.QueryMetricsAsync(sslStream, keysToAsk, cancellationToken);
     }
-}
-//Responsibility of file: accept connection and provide stream for query flow.
+}//Responsibility of file: accept connection and provide stream for query flow.

@@ -1,27 +1,25 @@
+using Microsoft.Extensions.Configuration;
 using StatMaster.Server;
-using System.Security.Cryptography.X509Certificates;
 
-int port = 50001; //port and server config need to be configurable on both ends
-string keyToAsk = args.Length > 0 ? args[0] : "system.hostname"; //keys also changable
+var configuration = new ConfigurationBuilder()
+    .SetBasePath(AppContext.BaseDirectory)
+    .AddJsonFile("appsettings.json", optional: false)
+    .AddEnvironmentVariables()
+    .Build();
 
-string certPath = "../../certs/statmaster-dev.pfx";
-string certPassword = "devpass123";
-string expectedToken = "dev-token";
-
-var certificate = new X509Certificate2(certPath, certPassword);
-var queryService = new MetricQueryService();
-var listener = new AgentListener(port, queryService, certificate, expectedToken);
-
-string responseText = await listener.ListenAndQueryOnceAsync(keyToAsk);
-
-Console.WriteLine($"[Server] ResponseMetric: {responseText}");//jus a quick check if the response is OK or not
-
-if (responseText.StartsWith("OK|", StringComparison.Ordinal))
+string[] keysToAsk = MetricCatalogResolver.ResolveEnabledKeys(configuration);
+if (keysToAsk.Length == 0)
 {
-    Console.WriteLine($"[Server] Metric value: {responseText["OK|".Length..]}");
+    Console.WriteLine("[Server] No enabled keys matched profile/target scope.");
+    return;
 }
-else
-{
-    Console.WriteLine($"[Server] Metric error: {responseText}");
-}
-//Responsibility of file: server bootstrap and output of response formatting.
+
+var runtime = ServerRuntimeOptions.FromConfiguration(configuration);
+var queryOptions = MetricQueryTimeout.FromConfiguration(configuration);
+var queryService = new MetricQueryService(queryOptions);
+var listener = new AgentListener(runtime.Port, queryService, runtime.LoadCertificate(), runtime.ExpectedToken);
+
+var responses = await listener.ListenAndQueryManyAsync(keysToAsk);
+MetricResponsePrinter.Print(responses);
+
+// Responsibility of file: setup the server and listen for the agent and query the metric
