@@ -6,6 +6,7 @@ using System.Net.Security;
 using System.Security.Cryptography.X509Certificates;
 using System.Security.Authentication;
 
+//ogolnie cancellation token jest opcjonalny w .net ale wymagany przez metody asynchroniczne zeby przerwac operacje jesli agent sie odłaczy i zwolnic watki i zasoby odrazu
 
 namespace StatMaster.Server;
 
@@ -27,8 +28,8 @@ public sealed class AgentListener //class to listen for the agent and query the 
     }
 
     //listens and queries many keys in one TLS session
-    public async Task<Dictionary<string, string>> ListenAndQueryManyAsync(
-        IEnumerable<string> keysToAsk,
+    public async Task ListenAndServeAsync(
+        Func<Stream, CancellationToken, Task> sessionHandler,
         CancellationToken cancellationToken = default)
     {
         //listening for the agent on the port
@@ -39,42 +40,45 @@ public sealed class AgentListener //class to listen for the agent and query the 
         Console.WriteLine($"[Server] Listening on 0.0.0.0:{_port}");
         Console.WriteLine("[Server] Waiting for agent connection...");
 
-        using var client = await listener.AcceptTcpClientAsync(cancellationToken);
-
+        using var client = await listener.AcceptTcpClientAsync(cancellationToken); //akceptujemy polaczenie z agenta ale cancellation token jest opcjonalny 
         Console.WriteLine($"[Server] Agent connected: {client.Client.RemoteEndPoint}");
 
         using var netStream = client.GetStream();
-        using var sslStream = new SslStream(netStream, leaveInnerStreamOpen: false, userCertificateValidationCallback: (_, _, _, _) => true);
+        using var sslStream = new SslStream(netStream, false, (_, _, _, _) => true);
 
         await sslStream.AuthenticateAsServerAsync(new SslServerAuthenticationOptions
-        { ServerCertificate = _serverCertificate, EnabledSslProtocols = SslProtocols.Tls12 | SslProtocols.Tls13, ClientCertificateRequired = false }, cancellationToken);
+        { ServerCertificate = _serverCertificate, 
+        EnabledSslProtocols = SslProtocols.Tls12 | SslProtocols.Tls13, 
+        ClientCertificateRequired = false }, 
+        cancellationToken); //cancellationToken jest opcjonalny ale wymagany przez metode AuthenticateAsServerAsync zeby przerwac operacje jesli agent sie odłaczy
 
         Console.WriteLine("[Server] TLS established.");
-        ProtocolFrame helloFrame = await FrameCodec.ReceiveFrameAsync(sslStream, cancellationToken);
-
+    
+        ProtocolFrame helloFrame = await FrameCodec.ReceiveFrameAsync(sslStream, cancellationToken); //receive the hello frame from the agent
         if (helloFrame.Type != MessageType.Hello)
         {
-            throw new InvalidOperationException($"Expected Hello, got: {helloFrame.Type}");
+            throw new InvalidOperationException($"Expected Hello, got: {helloFrame.Type}");//warunek jesli agent nie wyslal hello frame albo wyslal nieprawidlowy frame
         }
-        string helloText = Encoding.UTF8.GetString(helloFrame.Payload);
 
+        string helloText = Encoding.UTF8.GetString(helloFrame.Payload); //decodujemy zawartosc payload do stringa
         Console.WriteLine($"[Server] Hello received: {helloText}");
-        string[] parts = helloText.Split('|');
+        string[] parts = helloText.Split('|'); //dzielimy stringa na dwie czesci po | np. agentId|token tylko dla odczytu
 
         if (parts.Length != 2)
         {
             throw new InvalidOperationException("Invalid Hello format. Expected: agentId|token");
         }
+
         string agentId = parts[0];
 
         string token = parts[1];
-
         if (!string.Equals(token, _expectedToken, StringComparison.Ordinal))
         {
             throw new UnauthorizedAccessException("Hello token is invalid.");
         }
+
         Console.WriteLine($"[Server] Hello accepted. agentId={agentId}");
 
-        return await _queryService.QueryMetricsAsync(sslStream, keysToAsk, cancellationToken);
+        await sessionHandler(sslStream, cancellationToken); //sessionHandler jest funkcja ktora bedzie obsługiwala sesje z agentem
     }
 }//Responsibility of file: accept connection and provide stream for query flow.
