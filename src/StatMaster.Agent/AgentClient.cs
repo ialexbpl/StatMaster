@@ -30,7 +30,7 @@ public sealed class AgentClient
         Console.WriteLine("[Agent] Connected.");
 
         using var netStream = client.GetStream(); //using the stream from the socket
-        using var sslStream = new SslStream(netStream, leaveInnerStreamOpen: false, userCertificateValidationCallback: (_, _, _, _) => true);
+        using var sslStream = new SslStream(netStream, leaveInnerStreamOpen: false);
 
         await sslStream.AuthenticateAsClientAsync(new SslClientAuthenticationOptions
         {

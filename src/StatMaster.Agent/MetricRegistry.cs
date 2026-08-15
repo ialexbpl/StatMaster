@@ -28,6 +28,13 @@ public sealed class MetricRegistry
             ["disk.total.gb"] = GetDiskTotalGb,
             ["disk.free.gb"] = GetDiskFreeGb,
         };
+        
+        foreach (var def in ScriptConfigLoader.Load())
+        {
+            _scriptDefinitions[def.Key] = def;
+            _collectors[def.Key] = () => _scriptCollector.RunAsync(def).GetAwaiter().GetResult();
+        }
+        
 
     //probka poprzedniego odczytu, żeby liczyć delta czasu CPU.
         _lastCpuSample = ReadCpuTimes();
@@ -171,4 +178,8 @@ public sealed class MetricRegistry
     [DllImport("kernel32.dll", SetLastError = true)]
     [return: MarshalAs(UnmanagedType.Bool)]
     private static extern bool GetSystemTimes(out FileTime lpIdleTime, out FileTime lpKernelTime, out FileTime lpUserTime);
+
+    private readonly ScriptCollector _scriptCollector = new();
+    private readonly Dictionary<string, ScriptMetricDefinition> _scriptDefinitions =
+    new(StringComparer.OrdinalIgnoreCase);
 }

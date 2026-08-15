@@ -1,0 +1,18 @@
+[
+    {
+      "Key": "custom.os.version",
+      "FileName": "powershell.exe",
+      "Arguments": "-NoProfile -Command \"(Get-CimInstance Win32_OperatingSystem).Version\"",
+      "TimeoutMs": 5000,
+      "MaxOutputChars": 2000,
+      "Enabled": true
+    },
+    {
+      "Key": "custom.top5.processes",
+      "FileName": "powershell.exe",
+      "Arguments": "-NoProfile -Command \"Get-Process | Sort-Object CPU -Descending | Select-Object -First 5 -ExpandProperty ProcessName\"",
+      "TimeoutMs": 7000,
+      "MaxOutputChars": 4000,
+      "Enabled": true
+    }
+  ]
