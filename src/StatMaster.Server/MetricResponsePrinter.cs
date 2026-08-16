@@ -6,7 +6,7 @@ public static class MetricResponsePrinter
     {
         foreach (var item in responses)
         {
-            string timestamp = DateTimeOffset.UtcNow.ToString("O");
+            string timestamp = DateTimeOffset.UtcNow.ToOffset(TimeSpan.FromHours(2)).ToString("O");
             string key = item.Key;
             string responseText = item.Value;
 

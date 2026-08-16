@@ -94,3 +94,6 @@ appsettings.Development.json
 
 Design StatMaster Dashboard
 certs/
+statmaster.db
+statmaster.db-wal
+statmaster.db-shm

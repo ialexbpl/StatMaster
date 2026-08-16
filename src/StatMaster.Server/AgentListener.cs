@@ -29,7 +29,7 @@ public sealed class AgentListener //class to listen for the agent and query the 
 
     //listens and queries many keys in one TLS session
     public async Task ListenAndServeAsync(
-        Func<Stream, CancellationToken, Task> sessionHandler,
+        Func<string, Stream, CancellationToken, Task> sessionHandler,
         CancellationToken cancellationToken = default)
     {
         //listening for the agent on the port
@@ -79,6 +79,6 @@ public sealed class AgentListener //class to listen for the agent and query the 
 
         Console.WriteLine($"[Server] Hello accepted. agentId={agentId}");
 
-        await sessionHandler(sslStream, cancellationToken); //sessionHandler jest funkcja ktora bedzie obsługiwala sesje z agentem
+        await sessionHandler(agentId, sslStream, cancellationToken); //wywolujemy sessionHandler z agentId, sslStream i cancellationToken
     }
 }//Responsibility of file: accept connection and provide stream for query flow.
