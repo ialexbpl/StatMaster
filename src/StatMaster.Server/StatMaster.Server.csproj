@@ -4,6 +4,15 @@
     <ProjectReference Include="..\StatMaster.Protocol\StatMaster.Protocol.csproj" />
   </ItemGroup>
 
+  <ItemGroup>
+  <ProjectReference Include="..\StatMaster.Protocol\StatMaster.Protocol.csproj" />
+  <PackageReference Include="Microsoft.EntityFrameworkCore.Sqlite" Version="8.*" />
+  <PackageReference Include="Microsoft.EntityFrameworkCore.Design" Version="8.*">
+    <PrivateAssets>all</PrivateAssets>
+    <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
+  </PackageReference>
+</ItemGroup>
+
   <PropertyGroup>
     <TargetFramework>net8.0</TargetFramework>
     <Nullable>enable</Nullable>

@@ -1,5 +1,6 @@
 using Microsoft.Extensions.Configuration;
 using StatMaster.Server;
+using Microsoft.EntityFrameworkCore;
 
 var configuration = new ConfigurationBuilder()
     .SetBasePath(AppContext.BaseDirectory)
@@ -7,14 +8,30 @@ var configuration = new ConfigurationBuilder()
     .AddEnvironmentVariables()
     .Build(); //ladujemy configuration z appsettings.json i env
 
-//zwraca liste metric modeli ktore sa enabled w configuration zapisuje do itemsToAsk
-//usunieto keysToAsk bo nie potrzebujemy juz tego wyswietlac w konsoli bo jest to obsluzane przez scheduler bo on potrzbuje teraz wszystkie metryki od razu
-List<MetricModel> itemsToAsk = MetricConfigReader.ResolveEnabledItems(configuration);
-if (itemsToAsk.Count == 0) //jesli nie ma zadnych metryk enabled to konczy program
+string dbConnection = configuration.GetConnectionString("StatMasterDb")
+    ?? "Data Source=statmaster.db";
+
+var dbOptions = new DbContextOptionsBuilder<StatMasterDbContext>()
+    .UseSqlite(dbConnection)
+    .Options;
+using var db = new StatMasterDbContext(dbOptions);
+db.Database.EnsureCreated();
+
+// fallback onboarding: jeśli DB puste, zasiej z appsettings
+MetricCatalogBootstrapper.SeedFromAppsettingsIfEmpty(db, configuration);
+List<MetricModel> itemsToAsk = DbMetricCatalogReader.ResolveEnabledItems(db);
+
+// safety fallback: jeśli DB da 0, bierzemy appsettings
+if (itemsToAsk.Count == 0)
 {
-    Console.WriteLine("[Server] No enabled keys matched profile/target scope.");
+    itemsToAsk = MetricConfigReader.ResolveEnabledItems(configuration);
+}
+if (itemsToAsk.Count == 0)
+{
+    Console.WriteLine("[Server] No enabled metrics found.");
     return;
 }
+
 //were only asking for the keys that are enabled in the configuration and assigning them to the keysToAsk array
 //setup the server and listen for the agent and query the metric
 //tzw "manualne wstrzyknięcie zależności"
