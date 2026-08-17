@@ -10,6 +10,7 @@ public sealed class StatMasterDbContext : DbContext //EF MOWI ZE TO GLOWNY KONTE
     public DbSet<MetricDefinitionModel> MetricDefinitions => Set<MetricDefinitionModel>();//tu ida zapisy i odczyt do bazy, katalog i scheduler co ile i kied
     public DbSet<AgentTargetModel> AgentTargets => Set<AgentTargetModel>();//tu idzie lista endpointow i agentow
      public DbSet<MetricSampleModel> MetricSamples => Set<MetricSampleModel>();//tu idzie lista próbek metryk
+    public DbSet<AdminUserModel> AdminUsers => Set<AdminUserModel>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder) //modelBuilder to EF Core API, które pozwala na konfigurację mapowania modeli na tabele w bazie danych
     {
@@ -26,6 +27,10 @@ public sealed class StatMasterDbContext : DbContext //EF MOWI ZE TO GLOWNY KONTE
             
         modelBuilder.Entity<MetricSampleModel>()
             .HasIndex(x => new { x.AgentId, x.MetricKey, x.CapturedAtUtc });
+
+        modelBuilder.Entity<AdminUserModel>()
+            .HasIndex(x => x.Username)
+            .IsUnique();
     }
 }
 /*

@@ -1,32 +1,70 @@
-using Microsoft.Extensions.Configuration;
-using StatMaster.Server;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Data.Sqlite;
+using Microsoft.AspNetCore.Authentication.Cookies;
+using Microsoft.AspNetCore.Identity;
+using StatMaster.Server;
+using StatMaster.Server.Endpoints;
+using StatMaster.Server.Queries;
 
-var configuration = new ConfigurationBuilder()
-    .SetBasePath(AppContext.BaseDirectory)
-    .AddJsonFile("appsettings.json", optional: false)
-    .AddEnvironmentVariables()
-    .Build(); //ladujemy configuration z appsettings.json i env
+var builder = WebApplication.CreateBuilder(args);//wires automatically appsettings
+/*
+Automatycznie wczytuje:
 
-string configuredDbConnection = configuration.GetConnectionString("StatMasterDb")
+appsettings.json
+
+appsettings.Development.json
+
+zmienne środowiskowe
+
+user secrets (jeśli dev)
+
+parametry z linii komend
+*/
+
+string configuredDbConnection = builder.Configuration.GetConnectionString("StatMasterDb")
     ?? "Data Source=statmaster.db";
 string dbConnection = ResolveDatabaseConnection(configuredDbConnection);
+
+builder.Services.AddDbContextFactory<StatMasterDbContext>(options =>
+    options.UseSqlite(dbConnection));
+builder.Services.AddScoped<DashboardReadService>();
+builder.Services.AddScoped<IPasswordHasher<AdminUserModel>, PasswordHasher<AdminUserModel>>();
+builder.Services
+    .AddAuthentication(CookieAuthenticationDefaults.AuthenticationScheme)
+    .AddCookie(options =>
+    {
+        options.Cookie.Name = "statmaster.auth";
+        options.LoginPath = "/login";
+        options.AccessDeniedPath = "/login";
+        options.SlidingExpiration = true;
+        options.ExpireTimeSpan = TimeSpan.FromHours(8);
+    });
+builder.Services.AddAuthorization(options =>
+{
+    options.AddPolicy("DashboardAccess", policy =>
+    {
+        policy.RequireAuthenticatedUser();
+        policy.RequireClaim("must_change_password", "false");
+    });
+});
 
 var dbOptions = new DbContextOptionsBuilder<StatMasterDbContext>()
     .UseSqlite(dbConnection)
     .Options;
-using var db = new StatMasterDbContext(dbOptions);
-db.Database.EnsureCreated();
+
+using var schedulerDb = new StatMasterDbContext(dbOptions);
+schedulerDb.Database.EnsureCreated();
+EnsureAdminUsersTable(schedulerDb);
+SeedDefaultAdminIfMissing(schedulerDb);
 
 // fallback onboarding: jeśli DB puste, zasiej z appsettings
-MetricCatalogBootstrapper.SeedFromAppsettingsIfEmpty(db, configuration);
-List<MetricModel> itemsToAsk = DbMetricCatalogReader.ResolveEnabledItems(db);
+MetricCatalogBootstrapper.SeedFromAppsettingsIfEmpty(schedulerDb, builder.Configuration);
+List<MetricModel> itemsToAsk = DbMetricCatalogReader.ResolveEnabledItems(schedulerDb);
 
 // safety fallback: jeśli DB da 0, bierzemy appsettings
 if (itemsToAsk.Count == 0)
 {
-    itemsToAsk = MetricConfigReader.ResolveEnabledItems(configuration);
+    itemsToAsk = MetricConfigReader.ResolveEnabledItems(builder.Configuration);
 }
 if (itemsToAsk.Count == 0)
 {
@@ -37,15 +75,39 @@ if (itemsToAsk.Count == 0)
 //were only asking for the keys that are enabled in the configuration and assigning them to the keysToAsk array
 //setup the server and listen for the agent and query the metric
 //tzw "manualne wstrzyknięcie zależności"
-var runtime = ServerRuntimeOptions.FromConfiguration(configuration);//bierzemy port, certyfikat i token z configu
-var queryOptions = MetricQueryTimeout.FromConfiguration(configuration);//bierzemy timeout z configu
+var runtime = ServerRuntimeOptions.FromConfiguration(builder.Configuration);//bierzemy port, certyfikat i token z configu
+var queryOptions = MetricQueryTimeout.FromConfiguration(builder.Configuration);//bierzemy timeout z configu
 
 var queryService = new MetricQueryService(queryOptions);//tworzymy queryService z timeoutem
-var scheduler = new MetricScheduler(queryService, db);//tworzymy scheduler z queryService
+var scheduler = new MetricScheduler(queryService, schedulerDb);//tworzymy scheduler z queryService
 var listener = new AgentListener(runtime.Port, queryService, runtime.LoadCertificate(), runtime.ExpectedToken);//tworzymy listener z portem, queryService, certyfikatem i tokenem
 
-await listener.ListenAndServeAsync(//po handshake w przekazuje stream do scheduler ktory bedzie odpytywac metryki
-    sessionHandler: (agentId, stream, cancellationToken) => scheduler.RunAsync(agentId, stream, itemsToAsk, cancellationToken));//scheduler bedzie odpytywac metryki w okreslonych odstepach czasu
+var app = builder.Build();
+app.UseAuthentication();
+app.UseAuthorization();
+app.MapAuthEndpoints();
+app.MapDashboardEndpoints();
+
+_ = Task.Run(async () =>
+{
+    try
+    {
+        await listener.ListenAndServeAsync(
+            sessionHandler: (agentId, stream, cancellationToken) =>
+                scheduler.RunAsync(agentId, stream, itemsToAsk, cancellationToken),
+            cancellationToken: app.Lifetime.ApplicationStopping);
+    }
+    catch (OperationCanceledException)
+    {
+        // app is shutting down
+    }
+    catch (Exception ex)
+    {
+        Console.WriteLine($"[Server] Listener stopped: {ex.Message}");
+    }
+}, app.Lifetime.ApplicationStopping);
+
+await app.RunAsync();
 
 //responsibility of file: setup the server 
 
@@ -70,4 +132,44 @@ static string ResolveDatabaseConnection(string connectionString)
     string projectDirectory = Path.GetDirectoryName(projectDbPath)!;
     builder.DataSource = Path.GetFullPath(Path.Combine(projectDirectory, builder.DataSource));
     return builder.ToString();
+}
+
+static void EnsureAdminUsersTable(StatMasterDbContext db)
+{
+    db.Database.ExecuteSqlRaw(
+        """
+        CREATE TABLE IF NOT EXISTS AdminUsers (
+            Id INTEGER NOT NULL CONSTRAINT PK_AdminUsers PRIMARY KEY AUTOINCREMENT,
+            Username TEXT NOT NULL,
+            PasswordHash TEXT NOT NULL,
+            MustChangePassword INTEGER NOT NULL DEFAULT 1,
+            CreatedAtUtc TEXT NOT NULL,
+            UpdatedAtUtc TEXT NOT NULL
+        );
+        """);
+
+    db.Database.ExecuteSqlRaw(
+        """
+        CREATE UNIQUE INDEX IF NOT EXISTS IX_AdminUsers_Username
+        ON AdminUsers (Username);
+        """);
+}
+
+static void SeedDefaultAdminIfMissing(StatMasterDbContext db)
+{
+    if (db.AdminUsers.Any())
+        return;
+
+    var hasher = new PasswordHasher<AdminUserModel>();
+    var admin = new AdminUserModel
+    {
+        Username = "admin",
+        PasswordHash = string.Empty,
+        MustChangePassword = true,
+        CreatedAtUtc = DateTimeOffset.UtcNow,
+        UpdatedAtUtc = DateTimeOffset.UtcNow
+    };
+    admin.PasswordHash = hasher.HashPassword(admin, "admin");
+    db.AdminUsers.Add(admin);
+    db.SaveChanges();
 }
