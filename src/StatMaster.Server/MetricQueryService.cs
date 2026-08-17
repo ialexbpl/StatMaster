@@ -30,6 +30,13 @@ public sealed class MetricQueryService
                 Console.WriteLine($"[Server] AskForMetric sent: {key} (attempt {attempt}/{attempts})");
 
                 ProtocolFrame response = await FrameCodec.ReceiveFrameAsync(stream, timeoutCts.Token);
+                while (response.Type == MessageType.Heartbeat)
+                {
+                    string heartbeatAgentId = Encoding.UTF8.GetString(response.Payload);
+                    Console.WriteLine($"[Server] Heartbeat received from '{heartbeatAgentId}'.");
+                    response = await FrameCodec.ReceiveFrameAsync(stream, timeoutCts.Token);
+                }
+
                 if (response.Type != MessageType.ResponseMetric)
                 {
                     throw new InvalidOperationException($"Unexpected frame type: {response.Type}");

@@ -12,6 +12,7 @@ public sealed class AgentClient
     private readonly string _serverHost; //server host dependency
     private readonly int _serverPort; //server port dependency
     private readonly MetricRequestHandler _requestHandler; //request handler dependency
+    private static readonly TimeSpan HeartbeatInterval = TimeSpan.FromSeconds(20);
 
 //constructor to store dependencies
     public AgentClient(string serverHost, int serverPort, MetricRequestHandler requestHandler)
@@ -55,7 +56,16 @@ public sealed class AgentClient
             ProtocolFrame request; //declare the request frame from shared protocol
             try
             {
-                request = await FrameCodec.ReceiveFrameAsync(sslStream, cancellationToken);
+                using var receiveCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+                receiveCts.CancelAfter(HeartbeatInterval);
+                request = await FrameCodec.ReceiveFrameAsync(sslStream, receiveCts.Token);
+            }
+            catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
+            {
+                byte[] heartbeatPayload = Encoding.UTF8.GetBytes(agentId);
+                await FrameCodec.SendFrameAsync(sslStream, MessageType.Heartbeat, heartbeatPayload, cancellationToken);
+                Console.WriteLine("[Agent] Heartbeat sent.");
+                continue;
             }
             catch (EndOfStreamException)
             {
