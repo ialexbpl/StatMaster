@@ -2,6 +2,9 @@
 
   <ItemGroup>
     <ProjectReference Include="..\StatMaster.Protocol\StatMaster.Protocol.csproj" />
+  <None Update="appsettings.json">
+    <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+  </None>
   <None Update="agent-scripts.json">
     <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
   </None>

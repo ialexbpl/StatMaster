@@ -9,25 +9,48 @@ namespace StatMaster.Agent;
 //sealing agent class so it can't be inherited and modified
 public sealed class AgentClient
 {
-    private readonly string _serverHost; //server host dependency
-    private readonly int _serverPort; //server port dependency
+    private readonly AgentRuntimeOptions _options;
     private readonly MetricRequestHandler _requestHandler; //request handler dependency
     private static readonly TimeSpan HeartbeatInterval = TimeSpan.FromSeconds(20);
 
 //constructor to store dependencies
-    public AgentClient(string serverHost, int serverPort, MetricRequestHandler requestHandler)
+    public AgentClient(AgentRuntimeOptions options, MetricRequestHandler requestHandler)
     {
-        _serverHost = serverHost;
-        _serverPort = serverPort;
+        _options = options;
         _requestHandler = requestHandler; //this checks the key from the server and returns the value from the registry
     }
 
     public async Task RunAsync(CancellationToken cancellationToken = default)
     {
+        while (!cancellationToken.IsCancellationRequested)
+        {
+            try
+            {
+                await RunSingleSessionAsync(cancellationToken);
+            }
+            catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+            {
+                break;
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"[Agent] Connection/session error: {ex.Message}");
+            }
+
+            if (cancellationToken.IsCancellationRequested)
+                break;
+
+            Console.WriteLine($"[Agent] Reconnecting in {_options.ReconnectDelaySeconds}s...");
+            await Task.Delay(TimeSpan.FromSeconds(_options.ReconnectDelaySeconds), cancellationToken);
+        }
+    }
+
+    private async Task RunSingleSessionAsync(CancellationToken cancellationToken)
+    {
         //really creating a tcp client and connect to server
         using var client = new TcpClient();
-        Console.WriteLine($"[Agent] Connecting to {_serverHost}:{_serverPort}...");
-        await client.ConnectAsync(_serverHost, _serverPort); //wait for connection (stream)
+        Console.WriteLine($"[Agent] Connecting to {_options.ServerHost}:{_options.ServerPort}...");
+        await client.ConnectAsync(_options.ServerHost, _options.ServerPort, cancellationToken); //wait for connection (stream)
         Console.WriteLine("[Agent] Connected.");
 
         using var netStream = client.GetStream(); //using the stream from the socket
@@ -35,7 +58,7 @@ public sealed class AgentClient
 
         await sslStream.AuthenticateAsClientAsync(new SslClientAuthenticationOptions
         {
-            TargetHost = _serverHost,
+            TargetHost = _options.TlsTargetHost ?? _options.ServerHost,
             EnabledSslProtocols = SslProtocols.Tls12 | SslProtocols.Tls13
         }, cancellationToken);
 
@@ -43,9 +66,7 @@ public sealed class AgentClient
         
         //sending the hello frame to the server
         // HELLO: agentId|token
-        const string agentId = "AGENT-01";
-        const string token = "dev-token";
-        string helloText = $"{agentId}|{token}";
+        string helloText = $"{_options.AgentId}|{_options.Token}";
         byte[] helloPayload = Encoding.UTF8.GetBytes(helloText);
 
         await FrameCodec.SendFrameAsync(sslStream, MessageType.Hello, helloPayload, cancellationToken);
@@ -62,7 +83,7 @@ public sealed class AgentClient
             }
             catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
             {
-                byte[] heartbeatPayload = Encoding.UTF8.GetBytes(agentId);
+                byte[] heartbeatPayload = Encoding.UTF8.GetBytes(_options.AgentId);
                 await FrameCodec.SendFrameAsync(sslStream, MessageType.Heartbeat, heartbeatPayload, cancellationToken);
                 Console.WriteLine("[Agent] Heartbeat sent.");
                 continue;
