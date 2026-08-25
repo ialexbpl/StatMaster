@@ -27,6 +27,7 @@ public sealed class MetricRegistry
 
             ["disk.total.gb"] = GetDiskTotalGb,
             ["disk.free.gb"] = GetDiskFreeGb,
+            ["system.uptime"] = GetSystemUptime,
         };
         
         foreach (var def in ScriptConfigLoader.Load())
@@ -81,6 +82,12 @@ public sealed class MetricRegistry
         var drive = GetSystemDrive();
         double freeGb = drive.TotalFreeSpace / (1024d * 1024d * 1024d);
         return freeGb.ToString("F2", CultureInfo.InvariantCulture);
+    }
+
+    private static string GetSystemUptime()
+    {
+        var uptime = TimeSpan.FromMilliseconds(Environment.TickCount64);
+        return $"{(int)uptime.TotalDays}d {uptime.Hours}h {uptime.Minutes}m";
     }
 
     private static DriveInfo GetSystemDrive()

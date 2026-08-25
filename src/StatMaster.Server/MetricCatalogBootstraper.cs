@@ -6,24 +6,40 @@ public static class MetricCatalogBootstrapper
 {
     public static void SeedFromAppsettingsIfEmpty(StatMasterDbContext db, IConfiguration configuration)
     {
-        if (db.MetricDefinitions.Any())
-            return;
-
         var items = MetricConfigReader.ResolveEnabledItems(configuration);
+        var existingByKey = db.MetricDefinitions
+            .ToDictionary(x => x.Key, StringComparer.OrdinalIgnoreCase);
 
-        var rows = items.Select(i => new MetricDefinitionModel
+        foreach (var item in items)
         {
-            Key = i.Key,
-            Description = i.Description,
-            ValueType = i.ValueType,
-            Unit = i.Unit,
-            Enabled = i.Enabled,
-            Source = i.Source,
-            Target = i.Target,
-            IntervalSeconds = i.IntervalSeconds
-        });
+            if (!existingByKey.TryGetValue(item.Key, out var row))
+            {
+                db.MetricDefinitions.Add(new MetricDefinitionModel
+                {
+                    Key = item.Key,
+                    Description = item.Description,
+                    ValueType = item.ValueType,
+                    Unit = item.Unit,
+                    Enabled = item.Enabled,
+                    Source = item.Source,
+                    Target = item.Target,
+                    IntervalSeconds = item.IntervalSeconds,
+                    CreatedAtUtc = DateTimeOffset.UtcNow,
+                    UpdatedAtUtc = DateTimeOffset.UtcNow
+                });
+                continue;
+            }
 
-        db.MetricDefinitions.AddRange(rows);
+            row.Description = item.Description;
+            row.ValueType = item.ValueType;
+            row.Unit = item.Unit;
+            row.Enabled = item.Enabled;
+            row.Source = item.Source;
+            row.Target = item.Target;
+            row.IntervalSeconds = item.IntervalSeconds;
+            row.UpdatedAtUtc = DateTimeOffset.UtcNow;
+        }
+
         db.SaveChanges();
     }
 }
