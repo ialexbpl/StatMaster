@@ -1,0 +1,31 @@
+@inherits LayoutComponentBase
+@inject NavigationManager Navigation
+@inject IJSRuntime JS
+
+<div class="app-shell">
+    <header class="top-nav top-nav-extended">
+        <div class="container nav-row nav-row-main">
+            <div class="brand" @onclick="@(() => Navigation.NavigateTo("/"))">StatMaster</div>
+
+            <div class="nav-search">
+                <input placeholder="Search agents..." />
+            </div>
+
+            <div class="nav-actions">
+                <button class="icon-btn" title="Notifications">!</button>
+                <button class="avatar-btn" @onclick="LogoutAsync" title="Logout">AD</button>
+            </div>
+        </div>
+    </header>
+    <main class="container page-body">
+        @Body
+    </main>
+</div>
+
+@code {
+    private async Task LogoutAsync()
+    {
+        await JS.InvokeVoidAsync("statmasterAuth.logout");
+        Navigation.NavigateTo("/login", forceLoad: true);
+    }
+}
