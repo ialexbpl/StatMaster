@@ -6,7 +6,11 @@ using StatMaster.Server;
 using StatMaster.Server.Endpoints;
 using StatMaster.Server.Queries;
 
-var builder = WebApplication.CreateBuilder(args);//wires automatically appsettings
+var builder = WebApplication.CreateBuilder(new WebApplicationOptions
+{
+    Args = args,
+    WebRootPath = Path.Combine("UI", "wwwroot")
+});//wires automatically appsettings
 /*
 Automatycznie wczytuje:
 
@@ -29,6 +33,14 @@ builder.Services.AddDbContextFactory<StatMasterDbContext>(options =>
     options.UseSqlite(dbConnection));
 builder.Services.AddScoped<DashboardReadService>();
 builder.Services.AddScoped<IPasswordHasher<AdminUserModel>, PasswordHasher<AdminUserModel>>();
+
+builder.Services.AddHttpContextAccessor();
+builder.Services.AddRazorPages(options =>
+{
+    options.RootDirectory = "/UI/Pages";
+});
+builder.Services.AddServerSideBlazor();
+
 builder.Services
     .AddAuthentication(CookieAuthenticationDefaults.AuthenticationScheme)
     .AddCookie(options =>
@@ -79,14 +91,18 @@ var runtime = ServerRuntimeOptions.FromConfiguration(builder.Configuration);//bi
 var queryOptions = MetricQueryTimeout.FromConfiguration(builder.Configuration);//bierzemy timeout z configu
 
 var queryService = new MetricQueryService(queryOptions);//tworzymy queryService z timeoutem
-var scheduler = new MetricScheduler(queryService, schedulerDb);//tworzymy scheduler z queryService
-var listener = new AgentListener(runtime.Port, queryService, runtime.LoadCertificate(), runtime.ExpectedToken);//tworzymy listener z portem, queryService, certyfikatem i tokenem
 
 var app = builder.Build();
+var dbFactory = app.Services.GetRequiredService<IDbContextFactory<StatMasterDbContext>>();
+var scheduler = new MetricScheduler(queryService, schedulerDb);//tworzymy scheduler z queryService
+var listener = new AgentListener(runtime.Port, queryService, runtime.LoadCertificate(), runtime.ExpectedToken, dbFactory);//tworzymy listener z portem, queryService, certyfikatem i tokenem
+app.UseStaticFiles();
 app.UseAuthentication();
 app.UseAuthorization();
 app.MapAuthEndpoints();
 app.MapDashboardEndpoints();
+app.MapBlazorHub();
+app.MapFallbackToPage("/_Host");
 
 _ = Task.Run(async () =>
 {

@@ -1,6 +1,7 @@
 using System.Net;
 using System.Net.Sockets;
 using System.Text;
+using Microsoft.EntityFrameworkCore;
 using StatMaster.Protocol;
 using System.Net.Security;
 using System.Security.Cryptography.X509Certificates;
@@ -16,15 +17,22 @@ public sealed class AgentListener //class to listen for the agent and query the 
     private readonly MetricQueryService _queryService; //query service to query the metric /?///// ask what exactly isdone here are we defining variables or poinitng to a pllace or what
     private readonly X509Certificate2 _serverCertificate; //certificate to use for the server
     private readonly string _expectedToken; //expected token to use for the server
+    private readonly IDbContextFactory<StatMasterDbContext> _dbFactory;
 
 
     //storing the dependencies like tools we are using
-    public AgentListener(int port, MetricQueryService queryService, X509Certificate2 serverCertificate, string expectedToken)
+    public AgentListener(
+        int port,
+        MetricQueryService queryService,
+        X509Certificate2 serverCertificate,
+        string expectedToken,
+        IDbContextFactory<StatMasterDbContext> dbFactory)
     {
         _port = port;
         _queryService = queryService;
         _serverCertificate = serverCertificate;
         _expectedToken = expectedToken;
+        _dbFactory = dbFactory;
     }
 
     //listens and queries many keys in one TLS session
@@ -77,8 +85,40 @@ public sealed class AgentListener //class to listen for the agent and query the 
             throw new UnauthorizedAccessException("Hello token is invalid.");
         }
 
+        string? remoteIp = (client.Client.RemoteEndPoint as IPEndPoint)?.Address.ToString();
+        await UpsertAgentIpAsync(agentId, remoteIp, cancellationToken);
+
         Console.WriteLine($"[Server] Hello accepted. agentId={agentId}");
 
         await sessionHandler(agentId, sslStream, cancellationToken); //wywolujemy sessionHandler z agentId, sslStream i cancellationToken
+    }
+
+    private async Task UpsertAgentIpAsync(string agentId, string? ip, CancellationToken cancellationToken)
+    {
+        if (string.IsNullOrWhiteSpace(agentId) || string.IsNullOrWhiteSpace(ip))
+            return;
+
+        await using var db = await _dbFactory.CreateDbContextAsync(cancellationToken);
+        var target = await db.AgentTargets.FirstOrDefaultAsync(x => x.AgentId == agentId, cancellationToken);
+
+        if (target is null)
+        {
+            db.AgentTargets.Add(new AgentTargetModel
+            {
+                AgentId = agentId,
+                DisplayName = agentId,
+                HostOrIp = ip,
+                Enabled = true,
+                CreatedAtUtc = DateTimeOffset.UtcNow,
+                UpdatedAtUtc = DateTimeOffset.UtcNow
+            });
+        }
+        else if (!string.Equals(target.HostOrIp, ip, StringComparison.OrdinalIgnoreCase))
+        {
+            target.HostOrIp = ip;
+            target.UpdatedAtUtc = DateTimeOffset.UtcNow;
+        }
+
+        await db.SaveChangesAsync(cancellationToken);
     }
 }//Responsibility of file: accept connection and provide stream for query flow.
