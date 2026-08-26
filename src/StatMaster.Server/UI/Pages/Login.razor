@@ -1,0 +1,64 @@
+@page "/login"
+@attribute [AllowAnonymous]
+@layout AuthLayout
+@inject IJSRuntime JS
+@inject NavigationManager Navigation
+
+<div class="auth-card card">
+    <h2>Sign in</h2>
+    <p class="muted">Default first login: admin / admin</p>
+
+    <EditForm Model="_model" OnValidSubmit="SignInAsync">
+        <div class="field">
+            <label>Username</label>
+            <InputText @bind-Value="_model.Username" />
+        </div>
+        <div class="field">
+            <label>Password</label>
+            <InputText @bind-Value="_model.Password" type="password" />
+        </div>
+        <button class="btn-primary" type="submit">Login</button>
+    </EditForm>
+
+    @if (!string.IsNullOrWhiteSpace(_error))
+    {
+        <p class="error-text">@_error</p>
+    }
+</div>
+
+@code {
+    private LoginModel _model = new();
+    private string _error = string.Empty;
+
+    private async Task SignInAsync()
+    {
+        _error = string.Empty;
+        var result = await JS.InvokeAsync<LoginResult>("statmasterAuth.login", _model.Username, _model.Password);
+        if (!result.ok)
+        {
+            _error = result.message ?? "Login failed.";
+            return;
+        }
+
+        if (result.mustChangePassword)
+        {
+            Navigation.NavigateTo("/change-password", forceLoad: true);
+            return;
+        }
+
+        Navigation.NavigateTo("/", forceLoad: true);
+    }
+
+    private sealed class LoginModel
+    {
+        public string Username { get; set; } = "admin";
+        public string Password { get; set; } = "admin";
+    }
+
+    private sealed class LoginResult
+    {
+        public bool ok { get; set; }
+        public bool mustChangePassword { get; set; }
+        public string? message { get; set; }
+    }
+}
