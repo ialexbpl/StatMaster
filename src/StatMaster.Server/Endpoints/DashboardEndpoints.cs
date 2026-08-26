@@ -1,3 +1,4 @@
+using Microsoft.AspNetCore.Http;
 using StatMaster.Server.Queries;
 
 namespace StatMaster.Server.Endpoints;
@@ -11,8 +12,15 @@ public static class DashboardEndpoints
 
         group.MapGet("/agents", async (DashboardReadService service, CancellationToken ct) =>
         {
-            var data = await service.GetAgentsAsync(ct);
-            return Results.Ok(data);
+            try
+            {
+                var data = await service.GetAgentsAsync(ct);
+                return Results.Ok(data);
+            }
+            catch (OperationCanceledException)
+            {
+                return Results.StatusCode(StatusCodes.Status408RequestTimeout);
+            }
         });
 
         group.MapGet("/metrics/latest", async (
@@ -20,11 +28,21 @@ public static class DashboardEndpoints
             DashboardReadService service,
             CancellationToken ct) =>
         {
-            if (string.IsNullOrWhiteSpace(agentId))
-                return Results.BadRequest("agentId is required.");
+            try
+            {
+                if (string.IsNullOrWhiteSpace(agentId))
+                    return Results.BadRequest("agentId is required.");
 
-            var data = await service.GetLatestMetricsAsync(agentId, ct);
-            return Results.Ok(data);
+                if (!await service.AgentExistsAsync(agentId, ct))
+                    return Results.NotFound($"Agent '{agentId}' not found.");
+
+                var data = await service.GetLatestMetricsAsync(agentId, ct);
+                return Results.Ok(data);
+            }
+            catch (OperationCanceledException)
+            {
+                return Results.StatusCode(StatusCodes.Status408RequestTimeout);
+            }
         });
 
         group.MapGet("/metrics/history", async (
@@ -35,20 +53,30 @@ public static class DashboardEndpoints
             DashboardReadService service,
             CancellationToken ct) =>
         {
-            if (string.IsNullOrWhiteSpace(agentId))
-                return Results.BadRequest("agentId is required.");
+            try
+            {
+                if (string.IsNullOrWhiteSpace(agentId))
+                    return Results.BadRequest("agentId is required.");
 
-            if (string.IsNullOrWhiteSpace(key))
-                return Results.BadRequest("key is required.");
+                if (string.IsNullOrWhiteSpace(key))
+                    return Results.BadRequest("key is required.");
 
-            var data = await service.GetMetricHistoryAsync(
-                agentId,
-                key,
-                minutes ?? 60,
-                limit ?? 1000,
-                ct);
+                if (!await service.AgentExistsAsync(agentId, ct))
+                    return Results.NotFound($"Agent '{agentId}' not found.");
 
-            return Results.Ok(data);
+                var data = await service.GetMetricHistoryAsync(
+                    agentId,
+                    key,
+                    minutes ?? 60,
+                    limit ?? 1000,
+                    ct);
+
+                return Results.Ok(data);
+            }
+            catch (OperationCanceledException)
+            {
+                return Results.StatusCode(StatusCodes.Status408RequestTimeout);
+            }
         });
     }
 }

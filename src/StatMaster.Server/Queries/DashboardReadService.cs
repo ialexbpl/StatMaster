@@ -57,6 +57,7 @@ public sealed class DashboardReadService
             {
                 AgentId = agentId,
                 DisplayName = target?.DisplayName,
+                HostOrIp = target?.HostOrIp,
                 Enabled = target?.Enabled ?? true,
                 LastSeen = lastSeen,
                 Online = lastSeen >= onlineThreshold
@@ -64,6 +65,36 @@ public sealed class DashboardReadService
         }
 
         return result;
+    }
+
+    public async Task<AgentSummaryDto?> GetAgentByIdAsync(
+        string agentId,
+        CancellationToken ct = default)
+    {
+        if (string.IsNullOrWhiteSpace(agentId))
+            return null;
+
+        var agents = await GetAgentsAsync(ct);
+        return agents.FirstOrDefault(
+            x => string.Equals(x.AgentId, agentId, StringComparison.OrdinalIgnoreCase));
+    }
+
+    public async Task<bool> AgentExistsAsync(string agentId, CancellationToken ct = default)
+    {
+        if (string.IsNullOrWhiteSpace(agentId))
+            return false;
+
+        await using var db = await _dbFactory.CreateDbContextAsync(ct);
+
+        bool existsInTargets = await db.AgentTargets
+            .AsNoTracking()
+            .AnyAsync(x => x.AgentId == agentId, ct);
+        if (existsInTargets)
+            return true;
+
+        return await db.MetricSamples
+            .AsNoTracking()
+            .AnyAsync(x => x.AgentId == agentId, ct);
     }
 
     public async Task<IReadOnlyList<LatestMetricDto>> GetLatestMetricsAsync(
@@ -103,23 +134,26 @@ public sealed class DashboardReadService
         int limit = 1000,
         CancellationToken ct = default)
     {
-        minutes = Math.Clamp(minutes, 1, 7 * 24 * 60);
+        minutes = Math.Clamp(minutes, 1, 30 * 24 * 60);
         limit = Math.Clamp(limit, 1, 5000);
 
         await using var db = await _dbFactory.CreateDbContextAsync(ct);
 
         var from = DateTimeOffset.UtcNow.ToOffset(TimeSpan.FromHours(2)).AddMinutes(-minutes);
 
+        // SQLite + DateTimeOffset in WHERE/ORDER BY can behave inconsistently.
+        // We load a bounded recent set and apply precise time filtering in memory.
         var rows = await db.MetricSamples
             .AsNoTracking()
             .Where(x => x.AgentId == agentId)
             .Where(x => x.MetricKey == key)
-            .Where(x => x.CapturedAtUtc >= from)
             .OrderByDescending(x => x.Id)
-            .Take(limit)
+            .Take(5000)
             .ToListAsync(ct);
 
         return rows
+            .Where(x => x.CapturedAtUtc >= from)
+            .Take(limit)
             .OrderBy(x => x.Id)
             .Select(x => new MetricPointDto
             {

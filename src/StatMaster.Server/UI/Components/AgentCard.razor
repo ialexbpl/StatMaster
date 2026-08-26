@@ -1,0 +1,47 @@
+@using Microsoft.AspNetCore.Components
+
+<div class="card agent-card">
+    <div class="agent-card-head">
+        <span class="status-pill @(Agent.Online ? "online" : "offline")">
+            @(Agent.Online ? "Online" : "Offline")
+        </span>
+        <h4>@(Agent.DisplayName ?? Agent.AgentId)</h4>
+    </div>
+
+    <p class="agent-ip">@((string.IsNullOrWhiteSpace(Agent.HostOrIp) ? "-" : Agent.HostOrIp))</p>
+
+    <div class="metric-row">
+        <div class="metric-head"><span>CPU</span><span>@CpuPercent%</span></div>
+        <div class="metric-track"><div class="metric-fill cpu" style="@($"width:{CpuPercent}%")"></div></div>
+    </div>
+    <div class="metric-row">
+        <div class="metric-head"><span>RAM</span><span>@RamPercent%</span></div>
+        <div class="metric-track"><div class="metric-fill ram" style="@($"width:{RamPercent}%")"></div></div>
+    </div>
+    <div class="metric-row">
+        <div class="metric-head"><span>Disk</span><span>@DiskPercent%</span></div>
+        <div class="metric-track"><div class="metric-fill disk" style="@($"width:{DiskPercent}%")"></div></div>
+    </div>
+
+    <div class="agent-meta muted">
+        <span>Uptime</span>
+        <span>@Uptime</span>
+    </div>
+    <div class="agent-meta muted">
+        <span>Last seen</span>
+        <span>@LastSeenText</span>
+    </div>
+
+    <div class="agent-actions">
+        <a class="btn-link" href="@($"/agent/{Agent.AgentId}")">details</a>
+    </div>
+</div>
+
+@code {
+    [Parameter] public AgentSummaryDto Agent { get; set; } = default!;
+    [Parameter] public int CpuPercent { get; set; }
+    [Parameter] public int RamPercent { get; set; }
+    [Parameter] public int DiskPercent { get; set; }
+    [Parameter] public string Uptime { get; set; } = "-";
+    [Parameter] public string LastSeenText { get; set; } = "-";
+}

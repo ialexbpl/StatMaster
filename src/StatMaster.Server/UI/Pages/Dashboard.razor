@@ -1,0 +1,138 @@
+@page "/"
+@attribute [Authorize(Policy = "DashboardAccess")]
+@inject DashboardReadService DashboardReadService
+
+<h2>Dashboard</h2>
+
+<div class="stats-grid">
+    <StatCard Title="Total Agents" Value="@_agents.Count.ToString()" Icon="monitor" IconTone="icon-blue" />
+    <StatCard Title="Online" Value="@_onlineCount.ToString()" Icon="wifi" IconTone="icon-green" ValueClass="ok-text" />
+    <StatCard Title="Offline" Value="@((_agents.Count - _onlineCount).ToString())" Icon="wifi-off" IconTone="icon-red" ValueClass="error-text" />
+    <StatCard
+        Title="Alerts"
+        Value="@_alertsCount.ToString()"
+        Icon="alert-triangle"
+        IconTone="@(_alertsCount > 0 ? "icon-yellow" : "icon-yellow-muted")"
+        ValueClass="@(_alertsCount > 0 ? "warn-text" : string.Empty)" />
+</div>
+
+@if (!string.IsNullOrWhiteSpace(_error))
+{
+    <div class="card error-box">@_error</div>
+}
+
+<div class="agents-grid">
+    @foreach (var agent in _agents)
+    {
+        <AgentCard
+            Agent="agent"
+            CpuPercent="@GetCpuPercent(agent.AgentId)"
+            RamPercent="@GetRamPercent(agent.AgentId)"
+            DiskPercent="@GetDiskPercent(agent.AgentId)"
+            Uptime="@GetUptime(agent.AgentId)"
+            LastSeenText="@GetLastSeenAgo(agent.LastSeen)" />
+    }
+</div>
+
+@code {
+    private IReadOnlyList<AgentSummaryDto> _agents = Array.Empty<AgentSummaryDto>();
+    private readonly Dictionary<string, IReadOnlyList<LatestMetricDto>> _latestByAgent = new(StringComparer.OrdinalIgnoreCase);
+    private int _onlineCount;
+    private int _alertsCount;
+    private string _error = string.Empty;
+
+    protected override async Task OnInitializedAsync()
+    {
+        try
+        {
+            _agents = await DashboardReadService.GetAgentsAsync();
+            _onlineCount = _agents.Count(x => x.Online);
+
+            int alerts = 0;
+            foreach (var agent in _agents)
+            {
+                var latest = await DashboardReadService.GetLatestMetricsAsync(agent.AgentId);
+                _latestByAgent[agent.AgentId] = latest;
+                if (latest.Any(x => x.IsError))
+                    alerts++;
+            }
+            _alertsCount = alerts;
+        }
+        catch (Exception ex)
+        {
+            _error = $"Failed to load dashboard: {ex.Message}";
+        }
+    }
+
+    private LatestMetricDto? GetMetric(string agentId, string key)
+    {
+        if (!_latestByAgent.TryGetValue(agentId, out var metrics))
+            return null;
+
+        return metrics.FirstOrDefault(x =>
+            string.Equals(x.MetricKey, key, StringComparison.OrdinalIgnoreCase) &&
+            !x.IsError &&
+            !string.IsNullOrWhiteSpace(x.ValueText));
+    }
+
+    private static int ToIntPercent(double value)
+    {
+        return (int)Math.Clamp(Math.Round(value), 0, 100);
+    }
+
+    private double GetMetricNumber(string agentId, string key)
+    {
+        var metric = GetMetric(agentId, key);
+        if (metric is null)
+            return 0;
+
+        return double.TryParse(
+            metric.ValueText,
+            System.Globalization.NumberStyles.Any,
+            System.Globalization.CultureInfo.InvariantCulture,
+            out var value)
+            ? value
+            : 0;
+    }
+
+    private int GetCpuPercent(string agentId)
+    {
+        return ToIntPercent(GetMetricNumber(agentId, "cpu.usage.percent"));
+    }
+
+    private int GetRamPercent(string agentId)
+    {
+        var used = GetMetricNumber(agentId, "ram.used.mb");
+        var total = GetMetricNumber(agentId, "ram.total.mb");
+        if (total <= 0) return 0;
+        return ToIntPercent((used / total) * 100d);
+    }
+
+    private int GetDiskPercent(string agentId)
+    {
+        var free = GetMetricNumber(agentId, "disk.free.gb");
+        var total = GetMetricNumber(agentId, "disk.total.gb");
+        if (total <= 0) return 0;
+        var used = Math.Max(0, total - free);
+        return ToIntPercent((used / total) * 100d);
+    }
+
+    private string GetUptime(string agentId)
+    {
+        var metric = GetMetric(agentId, "system.uptime");
+        if (metric is null) return "-";
+        return metric.ValueText ?? "-";
+    }
+
+    private static string GetLastSeenAgo(DateTimeOffset? lastSeen)
+    {
+        if (!lastSeen.HasValue)
+            return "-";
+
+        var diff = DateTimeOffset.UtcNow - lastSeen.Value.ToUniversalTime();
+        if (diff.TotalSeconds < 60) return $"{Math.Max(1, (int)diff.TotalSeconds)}s ago";
+        if (diff.TotalMinutes < 60) return $"{(int)diff.TotalMinutes}m ago";
+        if (diff.TotalHours < 24) return $"{(int)diff.TotalHours}h ago";
+        return $"{(int)diff.TotalDays}d ago";
+    }
+}
