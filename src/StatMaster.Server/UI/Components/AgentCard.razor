@@ -5,7 +5,7 @@
         <span class="status-pill @(Agent.Online ? "online" : "offline")">
             @(Agent.Online ? "Online" : "Offline")
         </span>
-        <h4>@(Agent.DisplayName ?? Agent.AgentId)</h4>
+        <h4>@DeviceName</h4>
     </div>
 
     <p class="agent-ip">@((string.IsNullOrWhiteSpace(Agent.HostOrIp) ? "-" : Agent.HostOrIp))</p>
@@ -39,6 +39,7 @@
 
 @code {
     [Parameter] public AgentSummaryDto Agent { get; set; } = default!;
+    [Parameter] public string DeviceName { get; set; } = "-";
     [Parameter] public int CpuPercent { get; set; }
     [Parameter] public int RamPercent { get; set; }
     [Parameter] public int DiskPercent { get; set; }

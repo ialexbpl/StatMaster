@@ -5,18 +5,19 @@
 <div class="agent-breadcrumb muted">
     <a class="btn-link" href="/">Dashboard</a>
     <span>›</span>
-    <span>@(_agent?.DisplayName ?? id)</span>
+    <span>@GetDeviceName()</span>
 </div>
 
 <section class="card host-header-card">
     <div class="row">
         <div>
-            <h2 class="host-title">@(_agent?.DisplayName ?? id)</h2>
+            <h2 class="host-title">@GetDeviceName()</h2>
             <div class="host-meta">
                 <span class="status-pill @(_agent?.Online == true ? "online" : "offline")">
                     @(_agent?.Online == true ? "Online" : "Offline")
                 </span>
                 <span>IP: @(_agent?.HostOrIp ?? "-")</span>
+                <span>AgentId: @id</span>
                 <span>OS: @GetOsVersion()</span>
                 <span>Uptime: @GetMetricValue("system.uptime")</span>
             </div>
@@ -201,6 +202,18 @@
             return customVersion;
 
         return GetMetricValue("os.description");
+    }
+
+    private string GetDeviceName()
+    {
+        var hostname = GetMetricValue("system.hostname");
+        if (!string.Equals(hostname, "-", StringComparison.Ordinal))
+            return hostname;
+
+        if (!string.IsNullOrWhiteSpace(_agent?.DisplayName))
+            return _agent.DisplayName!;
+
+        return id;
     }
 
     private double GetMetricDouble(string key)

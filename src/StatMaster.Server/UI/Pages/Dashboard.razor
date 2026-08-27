@@ -26,6 +26,7 @@
     {
         <AgentCard
             Agent="agent"
+            DeviceName="@GetDeviceName(agent)"
             CpuPercent="@GetCpuPercent(agent.AgentId)"
             RamPercent="@GetRamPercent(agent.AgentId)"
             DiskPercent="@GetDiskPercent(agent.AgentId)"
@@ -122,6 +123,18 @@
         var metric = GetMetric(agentId, "system.uptime");
         if (metric is null) return "-";
         return metric.ValueText ?? "-";
+    }
+
+    private string GetDeviceName(AgentSummaryDto agent)
+    {
+        var hostnameMetric = GetMetric(agent.AgentId, "system.hostname");
+        if (hostnameMetric is not null && !string.IsNullOrWhiteSpace(hostnameMetric.ValueText))
+            return hostnameMetric.ValueText;
+
+        if (!string.IsNullOrWhiteSpace(agent.DisplayName))
+            return agent.DisplayName;
+
+        return agent.AgentId;
     }
 
     private static string GetLastSeenAgo(DateTimeOffset? lastSeen)
