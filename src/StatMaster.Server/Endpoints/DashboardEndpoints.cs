@@ -78,5 +78,44 @@ public static class DashboardEndpoints
                 return Results.StatusCode(StatusCodes.Status408RequestTimeout);
             }
         });
+
+        group.MapPost("/agents/{agentId}/delete", async (
+            string agentId,
+            HttpRequest request,
+            DashboardReadService service,
+            CancellationToken ct) =>
+        {
+            var form = await request.ReadFormAsync(ct);
+            string confirmText = form["confirmText"].ToString();
+            string returnUrl = NormalizeLocalReturnUrl(form["returnUrl"].ToString(), agentId);
+
+            if (!string.Equals(confirmText?.Trim(), "DELETE", StringComparison.OrdinalIgnoreCase))
+                return Results.Redirect($"{returnUrl}?deleteStatus=confirm");
+
+            try
+            {
+                bool deleted = await service.DeleteAgentDataAsync(agentId, ct);
+                if (!deleted)
+                    return Results.Redirect($"{returnUrl}?deleteStatus=notfound");
+
+                return Results.Redirect("/?deleteStatus=deleted");
+            }
+            catch (OperationCanceledException)
+            {
+                return Results.Redirect($"{returnUrl}?deleteStatus=timeout");
+            }
+        });
+    }
+
+    private static string NormalizeLocalReturnUrl(string? returnUrl, string agentId)
+    {
+        if (!string.IsNullOrWhiteSpace(returnUrl) &&
+            returnUrl.StartsWith("/", StringComparison.Ordinal) &&
+            !returnUrl.StartsWith("//", StringComparison.Ordinal))
+        {
+            return returnUrl;
+        }
+
+        return $"/agent/{Uri.EscapeDataString(agentId)}";
     }
 }

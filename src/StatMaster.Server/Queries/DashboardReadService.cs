@@ -164,4 +164,22 @@ public sealed class DashboardReadService
             })
             .ToList();
     }
+
+    public async Task<bool> DeleteAgentDataAsync(string agentId, CancellationToken ct = default)
+    {
+        if (string.IsNullOrWhiteSpace(agentId))
+            return false;
+
+        await using var db = await _dbFactory.CreateDbContextAsync(ct);
+
+        int deletedSamples = await db.MetricSamples
+            .Where(x => x.AgentId == agentId)
+            .ExecuteDeleteAsync(ct);
+
+        int deletedTargets = await db.AgentTargets
+            .Where(x => x.AgentId == agentId)
+            .ExecuteDeleteAsync(ct);
+
+        return deletedSamples > 0 || deletedTargets > 0;
+    }
 }

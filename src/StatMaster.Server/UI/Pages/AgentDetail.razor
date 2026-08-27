@@ -120,9 +120,24 @@
     <p class="muted">Placeholder for future event/audit stream.</p>
 </div>
 
+<div class="card danger-zone-card">
+    <h4>Delete Device</h4>
+    <p class="muted">Type <strong>DELETE</strong> to remove this device and all its stored metrics from database.</p>
+    <form method="post" action="@($"/api/agents/{Uri.EscapeDataString(id)}/delete")" class="row danger-zone-row">
+        <input class="delete-confirm-input" name="confirmText" placeholder="Type DELETE" />
+        <input type="hidden" name="returnUrl" value="@($"/agent/{Uri.EscapeDataString(id)}")" />
+        <button class="btn-danger" type="submit">Delete Device</button>
+    </form>
+    @if (!string.IsNullOrWhiteSpace(DeleteStatusMessage))
+    {
+        <p class="error-text">@DeleteStatusMessage</p>
+    }
+</div>
+
 @code {
     [Parameter] public string id { get; set; } = string.Empty;
     [Parameter, SupplyParameterFromQuery(Name = "minutes")] public int? Minutes { get; set; }
+    [Parameter, SupplyParameterFromQuery(Name = "deleteStatus")] public string? DeleteStatus { get; set; }
 
     private AgentSummaryDto? _agent;
     private IReadOnlyList<LatestMetricDto> _latest = Array.Empty<LatestMetricDto>();
@@ -352,4 +367,17 @@
     }
 
     private int SelectedMinutes => NormalizeMinutes(Minutes ?? 1440);
+    private string DeleteStatusMessage
+    {
+        get
+        {
+            return DeleteStatus?.ToLowerInvariant() switch
+            {
+                "confirm" => "Type DELETE exactly to confirm.",
+                "notfound" => "No records found for this device.",
+                "timeout" => "Delete request timed out. Try again.",
+                _ => string.Empty
+            };
+        }
+    }
 }
