@@ -1,0 +1,31 @@
+<div class="time-range">
+    @foreach (var option in Options)
+    {
+        <button
+            class="@(SelectedMinutes == option.Minutes ? "chip active" : "chip")"
+            @onclick="() => Select(option.Minutes)">
+            @option.Label
+        </button>
+    }
+</div>
+
+@code {
+    private static readonly (string Label, int Minutes)[] Options =
+    {
+        ("5m", 5),
+        ("15m", 15),
+        ("1h", 60),
+        ("12h", 720),
+        ("24h", 1440)
+    };
+
+    [Parameter] public int SelectedMinutes { get; set; } = 60;
+    [Parameter] public EventCallback<int> SelectedMinutesChanged { get; set; }
+
+    private async Task Select(int minutes)
+    {
+        if (SelectedMinutes == minutes) return;
+        SelectedMinutes = minutes;
+        await SelectedMinutesChanged.InvokeAsync(minutes);
+    }
+}

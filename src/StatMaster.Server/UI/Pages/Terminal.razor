@@ -1,0 +1,14 @@
+@page "/terminal/{id}"
+@attribute [Authorize(Policy = "DashboardAccess")]
+
+<a class="btn-link" href="@($"/agent/{id}")">← Back to Agent</a>
+<h2>Terminal: @id</h2>
+
+<div class="card">
+    <p>Terminal relay will be implemented in protocol phase for terminal frames.</p>
+    <p class="muted">This page is a placeholder for the future interactive terminal.</p>
+</div>
+
+@code {
+    [Parameter] public string id { get; set; } = string.Empty;
+}
