@@ -14,5 +14,13 @@
       "TimeoutMs": 7000,
       "MaxOutputChars": 4000,
       "Enabled": true
+    },
+    {
+      "Key": "custom.disk.c.free.gb",
+      "FileName": "powershell.exe",
+      "Arguments": "-NoProfile -Command \"[math]::Round((Get-PSDrive C).Free/1GB,2)\"",
+      "TimeoutMs": 5000,
+      "MaxOutputChars": 2000,
+      "Enabled": true
     }
   ]
