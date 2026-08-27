@@ -1,6 +1,5 @@
 @inherits LayoutComponentBase
 @inject NavigationManager Navigation
-@inject IJSRuntime JS
 
 <div class="app-shell">
     <header class="top-nav top-nav-extended">
@@ -12,8 +11,21 @@
             </div>
 
             <div class="nav-actions">
-                <button class="icon-btn" title="Notifications">!</button>
-                <button class="avatar-btn" @onclick="LogoutAsync" title="Logout">AD</button>
+                <a class="icon-btn" title="Notifications" href="/notifications">!</a>
+
+                <div class="account-menu-wrap">
+                    <details class="account-menu-details">
+                        <summary class="avatar-btn" title="Account">AD</summary>
+                        <div class="account-menu">
+                            <button type="button" class="account-menu-item">
+                                Profile (coming soon)
+                            </button>
+                            <button type="button" class="account-menu-item">
+                                Logout (coming soon)
+                            </button>
+                        </div>
+                    </details>
+                </div>
             </div>
         </div>
     </header>
@@ -21,11 +33,3 @@
         @Body
     </main>
 </div>
-
-@code {
-    private async Task LogoutAsync()
-    {
-        await JS.InvokeVoidAsync("statmasterAuth.logout");
-        Navigation.NavigateTo("/login", forceLoad: true);
-    }
-}
