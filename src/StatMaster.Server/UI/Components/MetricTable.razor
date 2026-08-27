@@ -1,0 +1,32 @@
+<div class="card">
+    <h4>Latest metrics</h4>
+    <div class="table-wrap">
+        <table>
+            <thead>
+                <tr>
+                    <th>Key</th>
+                    <th>Value</th>
+                    <th>Status</th>
+                    <th>Captured</th>
+                </tr>
+            </thead>
+            <tbody>
+                @foreach (var item in Metrics)
+                {
+                    <tr>
+                        <td>@item.MetricKey</td>
+                        <td>@(item.ValueText ?? item.ErrorText ?? item.RawResponse)</td>
+                        <td>
+                            <StatusBadge Status="@(item.IsError ? "error" : "online")" />
+                        </td>
+                        <td>@UiTime.Format(item.CapturedAt)</td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+    </div>
+</div>
+
+@code {
+    [Parameter] public IReadOnlyList<LatestMetricDto> Metrics { get; set; } = Array.Empty<LatestMetricDto>();
+}

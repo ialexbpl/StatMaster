@@ -1,0 +1,80 @@
+<div class="card stat-card">
+    <div class="row">
+        <p class="muted">@Title</p>
+        <span
+            class="stat-icon-container @IconTone"
+            style="color:@ResolveIconColor();width:52px;height:52px;display:inline-grid;place-items:center;background:#0f141c;border:1px solid #2a313d;border-radius:10px;"
+            aria-hidden="true">
+            @if (IsIcon("monitor"))
+            {
+                <svg viewBox="0 0 24 24" class="stat-dash-icon-svg" style="width:29px;height:29px;" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M4 5h16a1 1 0 0 1 1 1v10a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V6a1 1 0 0 1 1-1z" />
+                    <path d="M8 21h8" />
+                    <path d="M12 17v4" />
+                </svg>
+            }
+            else if (IsIcon("wifi"))
+            {
+                <svg viewBox="0 0 24 24" class="stat-dash-icon-svg" style="width:29px;height:29px;" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M12 20h.01" />
+                    <path d="M2 8.82a15 15 0 0 1 20 0" />
+                    <path d="M5 12.86a10 10 0 0 1 14 0" />
+                    <path d="M8.5 16.43a5 5 0 0 1 7 0" />
+                </svg>
+            }
+            else if (IsIcon("wifi-off"))
+            {
+                <svg viewBox="0 0 24 24" class="stat-dash-icon-svg" style="width:29px;height:29px;" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="m2 2 20 20" />
+                    <path d="M8.5 16.43a5 5 0 0 1 5.17-.66" />
+                    <path d="M5 12.86a10 10 0 0 1 5.4-2.48" />
+                    <path d="M2 8.82a15 15 0 0 1 10.52-2.66" />
+                    <path d="M17 11a10 10 0 0 1 2 1.86" />
+                    <path d="M12 20h.01" />
+                </svg>
+            }
+            else if (IsIcon("alert-triangle"))
+            {
+                <svg viewBox="0 0 24 24" class="stat-dash-icon-svg" style="width:29px;height:29px;" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="m10.29 3.86-8.6 14.88A2 2 0 0 0 3.43 22h17.14a2 2 0 0 0 1.73-3l-8.6-14.88a2 2 0 0 0-3.41 0Z" />
+                    <path d="M12 9v4" />
+                    <path d="M12 17h.01" />
+                </svg>
+            }
+            else
+            {
+                <svg viewBox="0 0 24 24" class="stat-dash-icon-svg" style="width:29px;height:29px;" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M4 5h16a1 1 0 0 1 1 1v10a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V6a1 1 0 0 1 1-1z" />
+                    <path d="M8 21h8" />
+                    <path d="M12 17v4" />
+                </svg>
+            }
+        </span>
+    </div>
+    <h3 class="stat-value @ValueClass">@Value</h3>
+</div>
+
+@code {
+    [Parameter] public string Title { get; set; } = string.Empty;
+    [Parameter] public string Value { get; set; } = string.Empty;
+    [Parameter] public string Icon { get; set; } = "monitor";
+    [Parameter] public string IconTone { get; set; } = "icon-blue";
+    [Parameter] public string ValueClass { get; set; } = string.Empty;
+
+    private bool IsIcon(string name)
+    {
+        return string.Equals(Icon, name, StringComparison.OrdinalIgnoreCase);
+    }
+
+    private string ResolveIconColor()
+    {
+        return IconTone.ToLowerInvariant() switch
+        {
+            "icon-green" => "#3fb950",
+            "icon-red" => "#f85149",
+            "icon-yellow" => "#d29922",
+            "icon-yellow-muted" => "#8b949e",
+            _ => "#58a6ff"
+        };
+    }
+}

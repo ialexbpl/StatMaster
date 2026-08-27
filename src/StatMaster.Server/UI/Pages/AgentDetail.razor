@@ -1,0 +1,355 @@
+@page "/agent/{id}"
+@attribute [Authorize(Policy = "DashboardAccess")]
+@inject DashboardReadService DashboardReadService
+
+<div class="agent-breadcrumb muted">
+    <a class="btn-link" href="/">Dashboard</a>
+    <span>›</span>
+    <span>@(_agent?.DisplayName ?? id)</span>
+</div>
+
+<section class="card host-header-card">
+    <div class="row">
+        <div>
+            <h2 class="host-title">@(_agent?.DisplayName ?? id)</h2>
+            <div class="host-meta">
+                <span class="status-pill @(_agent?.Online == true ? "online" : "offline")">
+                    @(_agent?.Online == true ? "Online" : "Offline")
+                </span>
+                <span>IP: @(_agent?.HostOrIp ?? "-")</span>
+                <span>OS: @GetOsVersion()</span>
+                <span>Uptime: @GetMetricValue("system.uptime")</span>
+            </div>
+        </div>
+        <a class="btn-primary terminal-btn" href="@($"/terminal/{id}")">Open Terminal</a>
+    </div>
+</section>
+
+<div class="range-pills">
+    @foreach (var range in _ranges)
+    {
+        <a class="@(GetRangeClass(range.Minutes))"
+           href="@BuildFilterHref(range.Minutes)">
+            @range.Label
+        </a>
+    }
+</div>
+
+@if (!string.IsNullOrWhiteSpace(_error))
+{
+    <div class="card error-box">@_error</div>
+}
+
+<section class="card chart-card">
+    <h4>CPU Usage Over Time</h4>
+    <div class="chart-shell">
+        <svg viewBox="0 0 1000 260" preserveAspectRatio="none">
+            <defs>
+                <linearGradient id="cpuArea" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="0%" stop-color="#3f8cff" stop-opacity="0.28" />
+                    <stop offset="100%" stop-color="#3f8cff" stop-opacity="0.03" />
+                </linearGradient>
+            </defs>
+            <g class="chart-grid">
+                <line x1="0" y1="0" x2="1000" y2="0"></line>
+                <line x1="0" y1="65" x2="1000" y2="65"></line>
+                <line x1="0" y1="130" x2="1000" y2="130"></line>
+                <line x1="0" y1="195" x2="1000" y2="195"></line>
+                <line x1="0" y1="259" x2="1000" y2="259"></line>
+            </g>
+            <polygon points="@BuildAreaPolygon(_cpuPoints)" fill="url(#cpuArea)"></polygon>
+            <polyline class="cpu-line" points="@BuildPolyline(_cpuPoints)"></polyline>
+        </svg>
+        <div class="chart-axis-labels">
+            @foreach (var label in _cpuTimeLabels)
+            {
+                <span>@label</span>
+            }
+        </div>
+    </div>
+</section>
+
+<div class="metrics-visual-grid">
+    <div class="card compact-chart-card">
+        <h4>RAM Usage</h4>
+        <div class="chart-shell small">
+            <svg viewBox="0 0 1000 220" preserveAspectRatio="none">
+                <defs>
+                    <linearGradient id="ramArea" x1="0" y1="0" x2="0" y2="1">
+                        <stop offset="0%" stop-color="#a778ff" stop-opacity="0.28" />
+                        <stop offset="100%" stop-color="#a778ff" stop-opacity="0.02" />
+                    </linearGradient>
+                </defs>
+                <g class="chart-grid">
+                    <line x1="0" y1="0" x2="1000" y2="0"></line>
+                    <line x1="0" y1="55" x2="1000" y2="55"></line>
+                    <line x1="0" y1="110" x2="1000" y2="110"></line>
+                    <line x1="0" y1="165" x2="1000" y2="165"></line>
+                    <line x1="0" y1="219" x2="1000" y2="219"></line>
+                </g>
+                <polygon points="@BuildAreaPolygon(_ramPoints, 220)" fill="url(#ramArea)"></polygon>
+                <polyline class="ram-line" points="@BuildPolyline(_ramPoints, 1000, 220)"></polyline>
+            </svg>
+            <div class="chart-axis-labels">
+                @foreach (var label in _ramTimeLabels)
+                {
+                    <span>@label</span>
+                }
+            </div>
+        </div>
+        <p class="muted">Used: @GetMetricValue("ram.used.mb") MB</p>
+        <p class="muted">Total: @GetMetricValue("ram.total.mb") MB</p>
+        <p class="muted">RAM: @GetRamUsedPercent().ToString("0.#")%</p>
+    </div>
+
+    <div class="card compact-chart-card">
+        <h4>Disk Usage</h4>
+        <div class="donut-wrap">
+            <div class="donut" style="@GetDiskDonutStyle()">
+                <span>@GetDiskUsedPercent().ToString("0.#")%</span>
+            </div>
+        </div>
+        <p class="disk-meta">@GetDiskUsedGb().ToString("0.##") GB / @GetMetricValue("disk.total.gb") GB</p>
+    </div>
+</div>
+
+<MetricTable Metrics="_latest" />
+
+<div class="card">
+    <h4>Event log</h4>
+    <p class="muted">Placeholder for future event/audit stream.</p>
+</div>
+
+@code {
+    [Parameter] public string id { get; set; } = string.Empty;
+    [Parameter, SupplyParameterFromQuery(Name = "minutes")] public int? Minutes { get; set; }
+
+    private AgentSummaryDto? _agent;
+    private IReadOnlyList<LatestMetricDto> _latest = Array.Empty<LatestMetricDto>();
+    private IReadOnlyList<MetricPointDto> _cpuHistory = Array.Empty<MetricPointDto>();
+    private IReadOnlyList<MetricPointDto> _ramHistory = Array.Empty<MetricPointDto>();
+    private string _error = string.Empty;
+    private IReadOnlyList<double> _cpuPoints = Array.Empty<double>();
+    private IReadOnlyList<double> _ramPoints = Array.Empty<double>();
+    private IReadOnlyList<string> _cpuTimeLabels = Array.Empty<string>();
+    private IReadOnlyList<string> _ramTimeLabels = Array.Empty<string>();
+
+    private static readonly (string Label, int Minutes)[] _ranges =
+    {
+        ("1h", 60),
+        ("6h", 360),
+        ("24h", 1440),
+        ("7d", 10080),
+        ("30d", 43200)
+    };
+
+    protected override async Task OnParametersSetAsync()
+    {
+        await LoadAsync();
+    }
+
+    private async Task LoadAsync()
+    {
+        try
+        {
+            _error = string.Empty;
+            int selectedMinutes = SelectedMinutes;
+            int historyLimit = ResolveHistoryLimit(selectedMinutes);
+            _agent = await DashboardReadService.GetAgentByIdAsync(id);
+            _latest = await DashboardReadService.GetLatestMetricsAsync(id);
+            _cpuHistory = await DashboardReadService.GetMetricHistoryAsync(id, "cpu.usage.percent", selectedMinutes, historyLimit);
+            _ramHistory = await DashboardReadService.GetMetricHistoryAsync(id, "ram.used.mb", selectedMinutes, historyLimit);
+            _cpuPoints = ToPercentSeries(_cpuHistory, 100);
+            _ramPoints = ToPercentSeries(_ramHistory, GetMetricDouble("ram.total.mb"));
+            _cpuTimeLabels = BuildTimeLabels(_cpuHistory, 8);
+            _ramTimeLabels = BuildTimeLabels(_ramHistory, 8);
+        }
+        catch (Exception ex)
+        {
+            _error = $"Failed to load agent data: {ex.Message}";
+        }
+    }
+
+    private string GetMetricValue(string key)
+    {
+        var item = _latest.FirstOrDefault(x => string.Equals(x.MetricKey, key, StringComparison.OrdinalIgnoreCase));
+        if (item is null || item.IsError)
+            return "-";
+
+        return string.IsNullOrWhiteSpace(item.ValueText) ? "-" : item.ValueText;
+    }
+
+    private string GetOsVersion()
+    {
+        var customVersion = GetMetricValue("custom.os.version");
+        if (!string.Equals(customVersion, "-", StringComparison.Ordinal))
+            return customVersion;
+
+        return GetMetricValue("os.description");
+    }
+
+    private double GetMetricDouble(string key)
+    {
+        var text = GetMetricValue(key);
+        if (string.Equals(text, "-", StringComparison.Ordinal))
+            return 0;
+
+        return double.TryParse(text, System.Globalization.NumberStyles.Any, System.Globalization.CultureInfo.InvariantCulture, out var value)
+            ? value
+            : 0;
+    }
+
+    private double GetDiskUsedGb()
+    {
+        var total = GetMetricDouble("disk.total.gb");
+        var free = GetMetricDouble("disk.free.gb");
+        var used = total - free;
+        return used < 0 ? 0 : used;
+    }
+
+    private double GetDiskUsedPercent()
+    {
+        var total = GetMetricDouble("disk.total.gb");
+        if (total <= 0)
+            return 0;
+
+        return Math.Clamp(GetDiskUsedGb() / total * 100d, 0, 100);
+    }
+
+    private string GetDiskDonutStyle()
+    {
+        var percent = GetDiskUsedPercent();
+        string percentText = percent.ToString("0.##", System.Globalization.CultureInfo.InvariantCulture);
+        return $"background: conic-gradient(#d8a126 {percentText}%, #3b4049 0%);";
+    }
+
+    private double GetRamUsedPercent()
+    {
+        var total = GetMetricDouble("ram.total.mb");
+        var used = GetMetricDouble("ram.used.mb");
+        if (total <= 0)
+            return 0;
+
+        return Math.Clamp(used / total * 100d, 0, 100);
+    }
+
+    private string GetRamProgressStyle()
+    {
+        var percent = GetRamUsedPercent();
+        string percentText = percent.ToString("0.##", System.Globalization.CultureInfo.InvariantCulture);
+        return $"width: {percentText}%;";
+    }
+
+    private static IReadOnlyList<double> ToPercentSeries(IReadOnlyList<MetricPointDto> source, double denominator)
+    {
+        if (source.Count == 0 || denominator <= 0)
+            return Array.Empty<double>();
+
+        var points = new List<double>(source.Count);
+        foreach (var item in source)
+        {
+            if (item.IsError || string.IsNullOrWhiteSpace(item.ValueText))
+                continue;
+
+            if (!double.TryParse(item.ValueText, System.Globalization.NumberStyles.Any, System.Globalization.CultureInfo.InvariantCulture, out var numeric))
+                continue;
+
+            var percent = Math.Clamp(numeric / denominator * 100d, 0, 100);
+            points.Add(percent);
+        }
+
+        return points;
+    }
+
+    private static IReadOnlyList<string> BuildTimeLabels(IReadOnlyList<MetricPointDto> source, int count)
+    {
+        if (source.Count == 0 || count <= 0)
+            return Array.Empty<string>();
+
+        if (source.Count <= count)
+            return source.Select(x => x.CapturedAt.ToString("hh:mm tt")).ToList();
+
+        var labels = new List<string>(count);
+        for (int i = 0; i < count; i++)
+        {
+            var idx = (int)Math.Round(i * (source.Count - 1d) / (count - 1d));
+            labels.Add(source[idx].CapturedAt.ToString("hh:mm tt"));
+        }
+        return labels;
+    }
+
+    private static string BuildPolyline(IReadOnlyList<double> points, int width = 1000, int height = 260)
+    {
+        if (points.Count == 0)
+            return string.Empty;
+
+        if (points.Count == 1)
+        {
+            var y = height - (points[0] / 100d * height);
+            return string.Format(
+                System.Globalization.CultureInfo.InvariantCulture,
+                "0,{0:0.##} {1},{0:0.##}",
+                y,
+                width);
+        }
+
+        var segments = new List<string>(points.Count);
+        for (int i = 0; i < points.Count; i++)
+        {
+            var x = i * (width / (double)(points.Count - 1));
+            var y = height - (points[i] / 100d * height);
+            segments.Add(string.Format(
+                System.Globalization.CultureInfo.InvariantCulture,
+                "{0:0.##},{1:0.##}",
+                x,
+                y));
+        }
+
+        return string.Join(" ", segments);
+    }
+
+    private static string BuildAreaPolygon(IReadOnlyList<double> points, int height = 260)
+    {
+        if (points.Count == 0)
+            return string.Empty;
+
+        var line = BuildPolyline(points, 1000, height);
+        return $"0,{height} {line} 1000,{height}";
+    }
+
+    private static int ResolveHistoryLimit(int minutes)
+    {
+        // CPU/RAM are collected roughly every 30 seconds, so ~2 points/minute.
+        // Add a small buffer and cap for safety.
+        int estimatedPoints = (minutes * 2) + 30;
+        return Math.Clamp(estimatedPoints, 120, 5000);
+    }
+
+    private string GetRangeClass(int minutes)
+    {
+        return SelectedMinutes == minutes ? "chip active" : "chip";
+    }
+
+    private string BuildFilterHref(int minutes)
+    {
+        int normalized = NormalizeMinutes(minutes);
+        string baseUri = $"/agent/{id}";
+        return normalized == 1440
+            ? baseUri
+            : $"{baseUri}?minutes={normalized}";
+    }
+
+    private static int NormalizeMinutes(int minutes)
+    {
+        return minutes switch
+        {
+            60 => 60,
+            360 => 360,
+            10080 => 10080,
+            43200 => 43200,
+            _ => 1440
+        };
+    }
+
+    private int SelectedMinutes => NormalizeMinutes(Minutes ?? 1440);
+}

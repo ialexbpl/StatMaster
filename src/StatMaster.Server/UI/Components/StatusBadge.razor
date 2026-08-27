@@ -1,0 +1,16 @@
+@if (Status == "online")
+{
+    <span class="badge badge-ok">Online</span>
+}
+else if (Status == "error")
+{
+    <span class="badge badge-warn">Error</span>
+}
+else
+{
+    <span class="badge badge-off">Offline</span>
+}
+
+@code {
+    [Parameter] public string Status { get; set; } = "offline";
+}
