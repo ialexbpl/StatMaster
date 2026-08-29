@@ -31,7 +31,8 @@
             RamPercent="@GetRamPercent(agent.AgentId)"
             DiskPercent="@GetDiskPercent(agent.AgentId)"
             Uptime="@GetUptime(agent.AgentId)"
-            LastSeenText="@GetLastSeenAgo(agent.LastSeen)" />
+            LastSeenText="@GetLastSeenAgo(agent.LastSeen)"
+            HasErrors="@HasErrors(agent.AgentId)" />
     }
 </div>
 
@@ -135,6 +136,14 @@
             return agent.DisplayName;
 
         return agent.AgentId;
+    }
+
+    private bool HasErrors(string agentId)
+    {
+        if (!_latestByAgent.TryGetValue(agentId, out var metrics))
+            return false;
+
+        return metrics.Any(x => x.IsError);
     }
 
     private static string GetLastSeenAgo(DateTimeOffset? lastSeen)

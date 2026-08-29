@@ -11,7 +11,13 @@
 <section class="card host-header-card">
     <div class="row">
         <div>
-            <h2 class="host-title">@GetDeviceName()</h2>
+            <h2 class="host-title">
+                @GetDeviceName()
+                @if (HasMetricErrors())
+                {
+                    <span class="agent-error-mark" title="This agent has metric errors">!</span>
+                }
+            </h2>
             <div class="host-meta">
                 <span class="status-pill @(_agent?.Online == true ? "online" : "offline")">
                     @(_agent?.Online == true ? "Online" : "Offline")
@@ -116,6 +122,60 @@
 
 <MetricTable Metrics="_latest" />
 
+<section class="card metric-config-card">
+    <h4>Custom script schedule</h4>
+    <p class="muted">Interval lives on the server catalog (all agents). Agent JSON only defines how the key is executed.</p>
+    @if (_customSettings.Count == 0)
+    {
+        <p class="muted">No custom script keys in the server catalog.</p>
+    }
+    else
+    {
+        <form method="post" action="/api/metrics/custom-schedule">
+            <input type="hidden" name="returnUrl" value="@($"/agent/{Uri.EscapeDataString(id)}")" />
+            <div class="table-wrap">
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Enabled</th>
+                            <th>Key</th>
+                            <th>Description</th>
+                            <th>Interval (s)</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var setting in _customSettings)
+                        {
+                            <tr>
+                                <td>
+                                    <input type="checkbox" name="@($"{setting.Key}.enabled")" value="true" checked="@setting.Enabled" />
+                                </td>
+                                <td>@setting.Key</td>
+                                <td>@setting.Description</td>
+                                <td>
+                                    <input class="interval-input"
+                                           type="number"
+                                           min="5"
+                                           max="86400"
+                                           name="@($"{setting.Key}.interval")"
+                                           value="@setting.IntervalSeconds" />
+                                </td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+            <div class="row danger-zone-row">
+                <button class="btn-primary" type="submit">Save custom schedule</button>
+            </div>
+        </form>
+    }
+    @if (!string.IsNullOrWhiteSpace(ScheduleStatusMessage))
+    {
+        <p class="@(string.Equals(ScheduleStatus, "saved", StringComparison.OrdinalIgnoreCase) ? "ok-text" : "error-text")">@ScheduleStatusMessage</p>
+    }
+</section>
+
 <div class="card">
     <h4>Event log</h4>
     <p class="muted">Placeholder for future event/audit stream.</p>
@@ -139,6 +199,7 @@
     [Parameter] public string id { get; set; } = string.Empty;
     [Parameter, SupplyParameterFromQuery(Name = "minutes")] public int? Minutes { get; set; }
     [Parameter, SupplyParameterFromQuery(Name = "deleteStatus")] public string? DeleteStatus { get; set; }
+    [Parameter, SupplyParameterFromQuery(Name = "scheduleStatus")] public string? ScheduleStatus { get; set; }
 
     private AgentSummaryDto? _agent;
     private IReadOnlyList<LatestMetricDto> _latest = Array.Empty<LatestMetricDto>();
@@ -149,6 +210,7 @@
     private IReadOnlyList<double> _ramPoints = Array.Empty<double>();
     private IReadOnlyList<string> _cpuTimeLabels = Array.Empty<string>();
     private IReadOnlyList<string> _ramTimeLabels = Array.Empty<string>();
+    private IReadOnlyList<CustomMetricSettingDto> _customSettings = Array.Empty<CustomMetricSettingDto>();
 
     private static readonly (string Label, int Minutes)[] _ranges =
     {
@@ -179,6 +241,7 @@
             _ramPoints = ToPercentSeries(_ramHistory, GetMetricDouble("ram.total.mb"));
             _cpuTimeLabels = BuildTimeLabels(_cpuHistory, 8);
             _ramTimeLabels = BuildTimeLabels(_ramHistory, 8);
+            _customSettings = await DashboardReadService.GetCustomMetricSettingsAsync();
         }
         catch (Exception ex)
         {
@@ -197,10 +260,6 @@
 
     private string GetOsVersion()
     {
-        var customVersion = GetMetricValue("custom.os.version");
-        if (!string.Equals(customVersion, "-", StringComparison.Ordinal))
-            return customVersion;
-
         return GetMetricValue("os.description");
     }
 
@@ -214,6 +273,11 @@
             return _agent.DisplayName!;
 
         return id;
+    }
+
+    private bool HasMetricErrors()
+    {
+        return _latest.Any(x => x.IsError);
     }
 
     private double GetMetricDouble(string key)
@@ -380,6 +444,13 @@
     }
 
     private int SelectedMinutes => NormalizeMinutes(Minutes ?? 1440);
+    private string ScheduleStatusMessage =>
+        ScheduleStatus?.ToLowerInvariant() switch
+        {
+            "saved" => "Custom schedule saved. Scheduler applies it within ~10 seconds.",
+            "timeout" => "Save timed out. Try again.",
+            _ => string.Empty
+        };
     private string DeleteStatusMessage
     {
         get

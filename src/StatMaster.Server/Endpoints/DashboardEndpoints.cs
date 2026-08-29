@@ -1,4 +1,5 @@
 using Microsoft.AspNetCore.Http;
+using StatMaster.Server.Contracts;
 using StatMaster.Server.Queries;
 
 namespace StatMaster.Server.Endpoints;
@@ -103,6 +104,53 @@ public static class DashboardEndpoints
             catch (OperationCanceledException)
             {
                 return Results.Redirect($"{returnUrl}?deleteStatus=timeout");
+            }
+        });
+
+        group.MapPost("/metrics/custom-schedule", async (
+            HttpRequest request,
+            DashboardReadService service,
+            CancellationToken ct) =>
+        {
+            var form = await request.ReadFormAsync(ct);
+            string returnUrl = form["returnUrl"].ToString();
+            if (string.IsNullOrWhiteSpace(returnUrl) ||
+                !returnUrl.StartsWith("/", StringComparison.Ordinal) ||
+                returnUrl.StartsWith("//", StringComparison.Ordinal))
+            {
+                returnUrl = "/";
+            }
+
+            var current = await service.GetCustomMetricSettingsAsync(ct);
+            var updates = new List<CustomMetricSettingDto>(current.Count);
+            foreach (var item in current)
+            {
+                string enabledRaw = form[$"{item.Key}.enabled"].ToString();
+                string intervalRaw = form[$"{item.Key}.interval"].ToString();
+                int interval = int.TryParse(intervalRaw, out var parsed) ? parsed : item.IntervalSeconds;
+                bool enabled = enabledRaw
+                    .Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+                    .Any(v => string.Equals(v, "true", StringComparison.OrdinalIgnoreCase) ||
+                              string.Equals(v, "on", StringComparison.OrdinalIgnoreCase));
+                updates.Add(new CustomMetricSettingDto
+                {
+                    Key = item.Key,
+                    Description = item.Description,
+                    Enabled = enabled,
+                    IntervalSeconds = interval
+                });
+            }
+
+            try
+            {
+                await service.SaveCustomMetricSettingsAsync(updates, ct);
+                string separator = returnUrl.Contains('?', StringComparison.Ordinal) ? "&" : "?";
+                return Results.Redirect($"{returnUrl}{separator}scheduleStatus=saved");
+            }
+            catch (OperationCanceledException)
+            {
+                string separator = returnUrl.Contains('?', StringComparison.Ordinal) ? "&" : "?";
+                return Results.Redirect($"{returnUrl}{separator}scheduleStatus=timeout");
             }
         });
     }

@@ -6,6 +6,10 @@
             @(Agent.Online ? "Online" : "Offline")
         </span>
         <h4>@DeviceName</h4>
+        @if (HasErrors)
+        {
+            <span class="agent-error-mark" title="This agent has metric errors">!</span>
+        }
     </div>
 
     <p class="agent-ip">@((string.IsNullOrWhiteSpace(Agent.HostOrIp) ? "-" : Agent.HostOrIp))</p>
@@ -45,4 +49,5 @@
     [Parameter] public int DiskPercent { get; set; }
     [Parameter] public string Uptime { get; set; } = "-";
     [Parameter] public string LastSeenText { get; set; } = "-";
+    [Parameter] public bool HasErrors { get; set; }
 }

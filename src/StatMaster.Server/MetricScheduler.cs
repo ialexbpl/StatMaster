@@ -19,15 +19,33 @@ public sealed class MetricScheduler
         IReadOnlyList<MetricModel> items,
         CancellationToken cancellationToken = default)
     {
-        var groups = items //grupujemy metryki po odstepach czasu i tworzymy dictionary gdzie kluczem jest odstep czasu a wartoscia jest tablica kluczy metryk
-            .GroupBy(i => Math.Max(1, i.IntervalSeconds))//grupujemy metryki po odstepach czasu i ochrzaniamy je na minimum 1 sekunde
-            .ToDictionary(g => g.Key, g => g.Select(x => x.Key).ToArray());//tu robie dictionary gdzie kluczem jest odstep czasu a wartoscia jest tablica kluczy metryk
-
-        var nextRun = groups.Keys.ToDictionary(k => k, _ => DateTimeOffset.UtcNow.ToOffset(TimeSpan.FromHours(2))); //nextrun zapisuje czas kiedy nastepny raz bedzie odpytywac metryki 
+        var groups = BuildGroups(items);
+        var nextRun = groups.Keys.ToDictionary(k => k, _ => DateTimeOffset.UtcNow.ToOffset(TimeSpan.FromHours(2)));
+        var nextConfigRefreshAt = DateTimeOffset.MinValue;
 
         while (!cancellationToken.IsCancellationRequested) //dopoki sesja nie jest anulowana
         {
             DateTimeOffset now = DateTimeOffset.UtcNow.ToOffset(TimeSpan.FromHours(2)); //pobieramy aktualny czas CEST
+            if (now >= nextConfigRefreshAt)
+            {
+                var refreshed = ReloadItems(items);
+                var rebuilt = BuildGroups(refreshed);
+                if (rebuilt.Count > 0)
+                {
+                    foreach (int interval in rebuilt.Keys)
+                    {
+                        if (!nextRun.ContainsKey(interval))
+                            nextRun[interval] = now;
+                    }
+
+                    foreach (int stale in nextRun.Keys.Except(rebuilt.Keys).ToList())
+                        nextRun.Remove(stale);
+
+                    groups = rebuilt;
+                }
+
+                nextConfigRefreshAt = now.AddSeconds(10);
+            }
             bool anyExecuted = false; //czy wykonalismy jakies zapytania flaga czy wykonalismy jakies zapytania 
 
             foreach (var group in groups) //pętla po grupach metryk
@@ -87,6 +105,28 @@ public sealed class MetricScheduler
             return (true, null, raw.Length > 4 ? raw[4..] : string.Empty);
         // fallback: traktuj jako value (stare/niestandardowe odpowiedzi)
         return (false, raw, null);
+    }
+
+    private static Dictionary<int, string[]> BuildGroups(IReadOnlyList<MetricModel> source)
+    {
+        return source
+            .Where(x => x.Enabled)
+            .GroupBy(i => Math.Max(1, i.IntervalSeconds))
+            .ToDictionary(g => g.Key, g => g.Select(x => x.Key).Distinct(StringComparer.OrdinalIgnoreCase).ToArray());
+    }
+
+    private List<MetricModel> ReloadItems(IReadOnlyList<MetricModel> fallbackItems)
+    {
+        try
+        {
+            _db.ChangeTracker.Clear();
+            var fromDb = DbMetricCatalogReader.ResolveEnabledItems(_db);
+            return fromDb.Count == 0 ? fallbackItems.ToList() : fromDb;
+        }
+        catch
+        {
+            return fallbackItems.ToList();
+        }
     }
 }
     

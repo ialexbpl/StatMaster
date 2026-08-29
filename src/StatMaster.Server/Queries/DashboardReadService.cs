@@ -182,4 +182,59 @@ public sealed class DashboardReadService
 
         return deletedSamples > 0 || deletedTargets > 0;
     }
+
+    public async Task<IReadOnlyList<CustomMetricSettingDto>> GetCustomMetricSettingsAsync(CancellationToken ct = default)
+    {
+        await using var db = await _dbFactory.CreateDbContextAsync(ct);
+
+        var rows = await db.MetricDefinitions
+            .AsNoTracking()
+            .Where(x => x.Source == "script")
+            .Where(x => x.Key != "custom.os.version")
+            .ToListAsync(ct);
+
+        return rows
+            .GroupBy(x => x.Key, StringComparer.OrdinalIgnoreCase)
+            .Select(g => g.OrderByDescending(x => x.UpdatedAtUtc).First())
+            .OrderBy(x => x.Key, StringComparer.OrdinalIgnoreCase)
+            .Select(x => new CustomMetricSettingDto
+            {
+                Key = x.Key,
+                Description = x.Description,
+                Enabled = x.Enabled,
+                IntervalSeconds = x.IntervalSeconds
+            })
+            .ToList();
+    }
+
+    public async Task SaveCustomMetricSettingsAsync(
+        IReadOnlyList<CustomMetricSettingDto> updates,
+        CancellationToken ct = default)
+    {
+        await using var db = await _dbFactory.CreateDbContextAsync(ct);
+
+        var rows = await db.MetricDefinitions
+            .Where(x => x.Source == "script")
+            .ToListAsync(ct);
+
+        var map = rows
+            .GroupBy(x => x.Key, StringComparer.OrdinalIgnoreCase)
+            .Select(g => g.OrderByDescending(x => x.UpdatedAtUtc).First())
+            .ToDictionary(x => x.Key, StringComparer.OrdinalIgnoreCase);
+
+        foreach (var update in updates)
+        {
+            if (string.IsNullOrWhiteSpace(update.Key))
+                continue;
+
+            if (!map.TryGetValue(update.Key, out var row))
+                continue;
+
+            row.Enabled = update.Enabled;
+            row.IntervalSeconds = Math.Clamp(update.IntervalSeconds, 5, 86400);
+            row.UpdatedAtUtc = DateTimeOffset.UtcNow;
+        }
+
+        await db.SaveChangesAsync(ct);
+    }
 }

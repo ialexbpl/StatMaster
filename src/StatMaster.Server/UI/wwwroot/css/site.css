@@ -227,6 +227,26 @@ input {
     font-size: 24px;
 }
 
+.agent-error-mark {
+    display: inline-grid;
+    place-items: center;
+    min-width: 22px;
+    height: 22px;
+    padding: 0 6px;
+    border-radius: 999px;
+    background: rgba(248, 81, 73, 0.2);
+    color: #f85149;
+    font-weight: 800;
+    font-size: 14px;
+    line-height: 1;
+}
+
+.host-title .agent-error-mark {
+    min-width: 32px;
+    height: 32px;
+    font-size: 20px;
+}
+
 .agent-ip {
     margin: 8px 0 12px;
     color: #8ea2be;
@@ -290,6 +310,9 @@ input {
     margin: 0;
     font-size: 46px;
     letter-spacing: 0.3px;
+    display: flex;
+    align-items: center;
+    gap: 12px;
 }
 
 .host-meta {
@@ -527,4 +550,12 @@ input {
 .btn-danger:disabled {
     opacity: 0.55;
     cursor: not-allowed;
+}
+
+.interval-input {
+    width: 110px;
+}
+
+.metric-config-card h4 {
+    margin: 0 0 6px;
 }

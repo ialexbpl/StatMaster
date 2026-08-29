@@ -33,12 +33,23 @@ public static class MetricCatalogBootstrapper
             row.Description = item.Description;
             row.ValueType = item.ValueType;
             row.Unit = item.Unit;
-            row.Enabled = item.Enabled;
             row.Source = item.Source;
             row.Target = item.Target;
-            row.IntervalSeconds = item.IntervalSeconds;
+            // Script schedule is owned by DB/UI. Do not reset Enabled/IntervalSeconds from JSON.
+            if (!string.Equals(item.Source, "script", StringComparison.OrdinalIgnoreCase))
+            {
+                row.Enabled = item.Enabled;
+                row.IntervalSeconds = item.IntervalSeconds;
+            }
             row.UpdatedAtUtc = DateTimeOffset.UtcNow;
         }
+
+        // OS is built-in (os.description). Do not keep a leftover custom.os.version schedule.
+        var leftoverOsCustom = db.MetricDefinitions
+            .Where(x => x.Key == "custom.os.version")
+            .ToList();
+        if (leftoverOsCustom.Count > 0)
+            db.MetricDefinitions.RemoveRange(leftoverOsCustom);
 
         db.SaveChanges();
     }
