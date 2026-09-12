@@ -1,16 +1,25 @@
+using Microsoft.EntityFrameworkCore;
+
 namespace StatMaster.Server;
 
 
 //klasa dla harmonogramu zap to agenta ktory bedzie odpytywac metryki w okreslonych odstepach czasu
 public sealed class MetricScheduler
 {
-    private readonly MetricQueryService _queryService; //klasa typu MetricQueryService
-    private readonly StatMasterDbContext _db;
+    public const string RebootKey = "system.reboot";
 
-    public MetricScheduler(MetricQueryService queryService, StatMasterDbContext db) //wstrzykniecie zaleznosci
+    private readonly MetricQueryService _queryService; //klasa typu MetricQueryService
+    private readonly IDbContextFactory<StatMasterDbContext> _dbFactory;
+    private readonly AgentListener _listener;
+
+    public MetricScheduler(
+        MetricQueryService queryService,
+        IDbContextFactory<StatMasterDbContext> dbFactory,
+        AgentListener listener)
     {
-        _queryService = queryService;//przypisanie zaleznosci
-        _db = db;//przypisanie zaleznosci
+        _queryService = queryService;
+        _dbFactory = dbFactory;
+        _listener = listener;
     }
 
     public async Task RunAsync(
@@ -47,6 +56,13 @@ public sealed class MetricScheduler
                 nextConfigRefreshAt = now.AddSeconds(10);
             }
             bool anyExecuted = false; //czy wykonalismy jakies zapytania flaga czy wykonalismy jakies zapytania 
+
+            if (_listener.ConsumeRebootRequest(agentId))
+            {
+                string rebootRaw = await _queryService.QueryMetricAsync(stream, RebootKey, cancellationToken);
+                Console.WriteLine($"[Server] Reboot response ({agentId}): {rebootRaw}");
+                anyExecuted = true;
+            }
 
             foreach (var group in groups) //pętla po grupach metryk
             {
@@ -94,8 +110,9 @@ public sealed class MetricScheduler
                 CapturedAtUtc = capturedAtUtc
             });
         }
-        _db.MetricSamples.AddRange(samples);
-        await _db.SaveChangesAsync(cancellationToken); //zapisujemy próbki metryk do bazy danych
+        await using var db = await _dbFactory.CreateDbContextAsync(cancellationToken);
+        db.MetricSamples.AddRange(samples);
+        await db.SaveChangesAsync(cancellationToken); //zapisujemy próbki metryk do bazy danych
     }
     private static (bool IsError, string? ValueText, string? ErrorText) ParseRawResponse(string raw)
     {
@@ -110,7 +127,7 @@ public sealed class MetricScheduler
     private static Dictionary<int, string[]> BuildGroups(IReadOnlyList<MetricModel> source)
     {
         return source
-            .Where(x => x.Enabled)
+            .Where(x => x.Enabled && !string.Equals(x.Key, RebootKey, StringComparison.OrdinalIgnoreCase))
             .GroupBy(i => Math.Max(1, i.IntervalSeconds))
             .ToDictionary(g => g.Key, g => g.Select(x => x.Key).Distinct(StringComparer.OrdinalIgnoreCase).ToArray());
     }
@@ -119,8 +136,8 @@ public sealed class MetricScheduler
     {
         try
         {
-            _db.ChangeTracker.Clear();
-            var fromDb = DbMetricCatalogReader.ResolveEnabledItems(_db);
+            using var db = _dbFactory.CreateDbContext();
+            var fromDb = DbMetricCatalogReader.ResolveEnabledItems(db);
             return fromDb.Count == 0 ? fallbackItems.ToList() : fromDb;
         }
         catch

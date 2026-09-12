@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using System.Globalization;
 using System.IO;
 using System.Runtime.CompilerServices;
@@ -28,6 +29,7 @@ public sealed class MetricRegistry
             ["disk.total.gb"] = GetDiskTotalGb,
             ["disk.free.gb"] = GetDiskFreeGb,
             ["system.uptime"] = GetSystemUptime,
+            ["system.reboot"] = RequestWindowsReboot,
         };
         
         foreach (var def in ScriptConfigLoader.Load())
@@ -88,6 +90,24 @@ public sealed class MetricRegistry
     {
         var uptime = TimeSpan.FromMilliseconds(Environment.TickCount64);
         return $"{(int)uptime.TotalDays}d {uptime.Hours}h {uptime.Minutes}m";
+    }
+
+    private static string RequestWindowsReboot()
+    {
+        string shutdown = Path.Combine(Environment.SystemDirectory, "shutdown.exe");
+        var start = new ProcessStartInfo
+        {
+            FileName = shutdown,
+            Arguments = "/r /t 5 /c \"StatMaster remote restart\"",
+            UseShellExecute = false,
+            CreateNoWindow = true
+        };
+
+        using var process = Process.Start(start);
+        if (process is null)
+            throw new InvalidOperationException("Could not start shutdown.exe.");
+
+        return "reboot-scheduled-5s";
     }
 
     private static DriveInfo GetSystemDrive()

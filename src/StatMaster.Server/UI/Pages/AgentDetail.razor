@@ -28,7 +28,6 @@
                 <span>Uptime: @GetMetricValue("system.uptime")</span>
             </div>
         </div>
-        <a class="btn-primary terminal-btn" href="@($"/terminal/{id}")">Open Terminal</a>
     </div>
 </section>
 
@@ -182,6 +181,20 @@
 </div>
 
 <div class="card danger-zone-card">
+    <h4>Restart Windows</h4>
+    <p class="muted">Reboots this PC in 5 seconds. The agent must be online. Type <strong>RESTART</strong> to confirm.</p>
+    <form method="post" action="@($"/api/agents/{Uri.EscapeDataString(id)}/restart")" class="row danger-zone-row">
+        <input class="delete-confirm-input" name="confirmText" placeholder="Type RESTART" />
+        <input type="hidden" name="returnUrl" value="@($"/agent/{Uri.EscapeDataString(id)}")" />
+        <button class="btn-danger" type="submit">Restart Windows</button>
+    </form>
+    @if (!string.IsNullOrWhiteSpace(RebootStatusMessage))
+    {
+        <p class="@(RebootStatus is "scheduled" ? "ok-text" : "error-text")">@RebootStatusMessage</p>
+    }
+</div>
+
+<div class="card danger-zone-card">
     <h4>Delete Device</h4>
     <p class="muted">Type <strong>DELETE</strong> to remove this device and all its stored metrics from database.</p>
     <form method="post" action="@($"/api/agents/{Uri.EscapeDataString(id)}/delete")" class="row danger-zone-row">
@@ -200,6 +213,7 @@
     [Parameter, SupplyParameterFromQuery(Name = "minutes")] public int? Minutes { get; set; }
     [Parameter, SupplyParameterFromQuery(Name = "deleteStatus")] public string? DeleteStatus { get; set; }
     [Parameter, SupplyParameterFromQuery(Name = "scheduleStatus")] public string? ScheduleStatus { get; set; }
+    [Parameter, SupplyParameterFromQuery(Name = "rebootStatus")] public string? RebootStatus { get; set; }
 
     private AgentSummaryDto? _agent;
     private IReadOnlyList<LatestMetricDto> _latest = Array.Empty<LatestMetricDto>();
@@ -451,6 +465,17 @@
             "timeout" => "Save timed out. Try again.",
             _ => string.Empty
         };
+    private string RebootStatusMessage =>
+        RebootStatus?.ToLowerInvariant() switch
+        {
+            "scheduled" => "Reboot command sent. Windows on this PC should restart in about 5 seconds.",
+            "offline" => "Host is not connected. Cannot restart Windows.",
+            "confirm" => "Type RESTART exactly to confirm.",
+            "notfound" => "Agent was not found.",
+            "timeout" => "Request timed out. Try again.",
+            _ => string.Empty
+        };
+
     private string DeleteStatusMessage
     {
         get

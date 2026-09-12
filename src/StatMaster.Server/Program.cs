@@ -32,9 +32,11 @@ string dbConnection = ResolveDatabaseConnection(configuredDbConnection);
 builder.Services.AddDbContextFactory<StatMasterDbContext>(options =>
     options.UseSqlite(dbConnection));
 builder.Services.AddScoped<DashboardReadService>();
+builder.Services.AddScoped<AdminUserService>();
 builder.Services.AddScoped<IPasswordHasher<AdminUserModel>, PasswordHasher<AdminUserModel>>();
 
 builder.Services.AddHttpContextAccessor();
+builder.Services.AddCascadingAuthenticationState();
 builder.Services.AddRazorPages(options =>
 {
     options.RootDirectory = "/UI/Pages";
@@ -56,7 +58,7 @@ builder.Services.AddAuthorization(options =>
     options.AddPolicy("DashboardAccess", policy =>
     {
         policy.RequireAuthenticatedUser();
-        policy.RequireClaim("must_change_password", "false");
+        policy.RequireClaim("must_change_password", "false"); //during the authentication process, the user is authenticated and the claims are added to the principal
     });
 });
 
@@ -66,6 +68,8 @@ var dbOptions = new DbContextOptionsBuilder<StatMasterDbContext>()
 
 using var schedulerDb = new StatMasterDbContext(dbOptions);
 schedulerDb.Database.EnsureCreated();
+schedulerDb.Database.ExecuteSqlRaw("PRAGMA journal_mode=WAL;");
+schedulerDb.Database.ExecuteSqlRaw("PRAGMA busy_timeout=5000;");
 EnsureAdminUsersTable(schedulerDb);
 SeedDefaultAdminIfMissing(schedulerDb);
 
@@ -92,14 +96,25 @@ var queryOptions = MetricQueryTimeout.FromConfiguration(builder.Configuration);/
 
 var queryService = new MetricQueryService(queryOptions);//tworzymy queryService z timeoutem
 
+builder.Services.AddSingleton(sp =>
+{
+    var factory = sp.GetRequiredService<IDbContextFactory<StatMasterDbContext>>();
+    return new AgentListener(
+        runtime.Port,
+        queryService,
+        runtime.LoadCertificate(),
+        runtime.ExpectedToken,
+        factory);
+});
+
 var app = builder.Build();
 var dbFactory = app.Services.GetRequiredService<IDbContextFactory<StatMasterDbContext>>();
-var scheduler = new MetricScheduler(queryService, schedulerDb);//tworzymy scheduler z queryService
-var listener = new AgentListener(runtime.Port, queryService, runtime.LoadCertificate(), runtime.ExpectedToken, dbFactory);//tworzymy listener z portem, queryService, certyfikatem i tokenem
+var listener = app.Services.GetRequiredService<AgentListener>();
 app.UseStaticFiles();
 app.UseAuthentication();
 app.UseAuthorization();
 app.MapAuthEndpoints();
+app.MapAdminEndpoints();
 app.MapDashboardEndpoints();
 app.MapBlazorHub();
 app.MapFallbackToPage("/_Host");
@@ -110,7 +125,10 @@ _ = Task.Run(async () =>
     {
         await listener.ListenAndServeAsync(
             sessionHandler: (agentId, stream, cancellationToken) =>
-                scheduler.RunAsync(agentId, stream, itemsToAsk, cancellationToken),
+            {
+                var sessionScheduler = new MetricScheduler(queryService, dbFactory, listener);
+                return sessionScheduler.RunAsync(agentId, stream, itemsToAsk, cancellationToken);
+            },
             cancellationToken: app.Lifetime.ApplicationStopping);
     }
     catch (OperationCanceledException)
