@@ -1,15 +1,12 @@
-using System.Security.Claims;
 using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Authentication.Cookies;
 using Microsoft.AspNetCore.Identity;
-using Microsoft.EntityFrameworkCore;
+using StatMaster.Server.Queries;
 
 namespace StatMaster.Server.Endpoints;
 
 public static class AuthEndpoints
 {
-    private const string MustChangeClaimType = "must_change_password";
-
     public static void MapAuthEndpoints(this IEndpointRouteBuilder app)
     {
         var group = app.MapGroup("/auth");
@@ -17,14 +14,13 @@ public static class AuthEndpoints
         group.MapPost("/login", async (
             LoginRequest request,
             HttpContext httpContext,
-            IDbContextFactory<StatMasterDbContext> dbFactory,
+            AdminUserService users,
             IPasswordHasher<AdminUserModel> hasher) =>
         {
             if (string.IsNullOrWhiteSpace(request.Username) || string.IsNullOrWhiteSpace(request.Password))
                 return Results.BadRequest(new { message = "Username and password are required." });
 
-            await using var db = await dbFactory.CreateDbContextAsync();
-            var user = await db.AdminUsers.FirstOrDefaultAsync(x => x.Username == request.Username);
+            var user = await users.FindByUsernameAsync(request.Username);
             if (user is null)
                 return Results.Unauthorized();
 
@@ -32,7 +28,7 @@ public static class AuthEndpoints
             if (verify == PasswordVerificationResult.Failed)
                 return Results.Unauthorized();
 
-            var principal = CreatePrincipal(user.Username, user.MustChangePassword);
+            var principal = AuthPrincipal.Create(user.Username, user.MustChangePassword);
             await httpContext.SignInAsync(CookieAuthenticationDefaults.AuthenticationScheme, principal);
 
             return Results.Ok(new
@@ -48,78 +44,51 @@ public static class AuthEndpoints
                 return Results.Unauthorized();
 
             string username = httpContext.User.Identity?.Name ?? string.Empty;
-            bool mustChange = IsMustChangePassword(httpContext.User);
+            bool mustChange = AuthPrincipal.IsMustChangePassword(httpContext.User);
             return Results.Ok(new { username, mustChangePassword = mustChange });
         }).RequireAuthorization();
 
         group.MapPost("/logout", async (HttpContext httpContext) =>
         {
             await httpContext.SignOutAsync(CookieAuthenticationDefaults.AuthenticationScheme);
+            if (httpContext.Request.HasFormContentType)
+                return Results.Redirect("/login");
+
             return Results.Ok();
         }).RequireAuthorization();
 
         group.MapPost("/change-password", async (
             ChangePasswordRequest request,
             HttpContext httpContext,
-            IDbContextFactory<StatMasterDbContext> dbFactory,
-            IPasswordHasher<AdminUserModel> hasher) =>
+            AdminUserService users) =>
         {
             if (httpContext.User.Identity?.IsAuthenticated != true)
                 return Results.Unauthorized();
 
-            if (string.IsNullOrWhiteSpace(request.OldPassword) ||
-                string.IsNullOrWhiteSpace(request.NewPassword) ||
-                string.IsNullOrWhiteSpace(request.ConfirmPassword))
-            {
-                return Results.BadRequest(new { message = "All password fields are required." });
-            }
-
-            if (!string.Equals(request.NewPassword, request.ConfirmPassword, StringComparison.Ordinal))
-                return Results.BadRequest(new { message = "New password and confirmation do not match." });
-
-            if (request.NewPassword.Length < 8)
-                return Results.BadRequest(new { message = "New password must be at least 8 characters long." });
-
             string username = httpContext.User.Identity?.Name ?? string.Empty;
-            await using var db = await dbFactory.CreateDbContextAsync();
-            var user = await db.AdminUsers.FirstOrDefaultAsync(x => x.Username == username);
-            if (user is null)
-                return Results.Unauthorized();
+            var status = await users.ChangePasswordAsync(
+                username,
+                request.OldPassword,
+                request.NewPassword,
+                request.ConfirmPassword);
 
-            var verify = hasher.VerifyHashedPassword(user, user.PasswordHash, request.OldPassword);
-            if (verify == PasswordVerificationResult.Failed)
-                return Results.BadRequest(new { message = "Old password is invalid." });
-
-            user.PasswordHash = hasher.HashPassword(user, request.NewPassword);
-            user.MustChangePassword = false;
-            user.UpdatedAtUtc = DateTimeOffset.UtcNow;
-            await db.SaveChangesAsync();
-
-            var principal = CreatePrincipal(user.Username, mustChangePassword: false);
-            await httpContext.SignInAsync(CookieAuthenticationDefaults.AuthenticationScheme, principal);
-
-            return Results.Ok(new { message = "Password changed successfully." });
+            return status switch
+            {
+                AdminPasswordStatus.Changed => await SignInAndOk(httpContext, username),
+                AdminPasswordStatus.UserNotFound => Results.Unauthorized(),
+                AdminPasswordStatus.InvalidOld => Results.BadRequest(new { message = "Old password is invalid." }),
+                AdminPasswordStatus.Mismatch => Results.BadRequest(new { message = "New password and confirmation do not match." }),
+                AdminPasswordStatus.TooShort => Results.BadRequest(new { message = "New password must be at least 8 characters long." }),
+                _ => Results.BadRequest(new { message = "All password fields are required." })
+            };
         }).RequireAuthorization();
     }
 
-    private static ClaimsPrincipal CreatePrincipal(string username, bool mustChangePassword)
+    private static async Task<IResult> SignInAndOk(HttpContext httpContext, string username)
     {
-        var claims = new List<Claim>
-        {
-            new(ClaimTypes.Name, username),
-            new(MustChangeClaimType, mustChangePassword ? "true" : "false")
-        };
-
-        var identity = new ClaimsIdentity(claims, CookieAuthenticationDefaults.AuthenticationScheme);
-        return new ClaimsPrincipal(identity);
-    }
-
-    private static bool IsMustChangePassword(ClaimsPrincipal principal)
-    {
-        return string.Equals(
-            principal.FindFirstValue(MustChangeClaimType),
-            "true",
-            StringComparison.OrdinalIgnoreCase);
+        var principal = AuthPrincipal.Create(username, mustChangePassword: false);
+        await httpContext.SignInAsync(CookieAuthenticationDefaults.AuthenticationScheme, principal);
+        return Results.Ok(new { message = "Password changed successfully." });
     }
 
     private sealed record LoginRequest(string Username, string Password);

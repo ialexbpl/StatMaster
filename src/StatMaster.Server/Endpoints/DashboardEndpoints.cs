@@ -80,6 +80,35 @@ public static class DashboardEndpoints
             }
         });
 
+        group.MapPost("/agents/{agentId}/restart", async (
+            string agentId,
+            HttpRequest request,
+            AgentListener listener,
+            DashboardReadService service,
+            CancellationToken ct) =>
+        {
+            var form = await request.ReadFormAsync(ct);
+            string returnUrl = NormalizeLocalReturnUrl(form["returnUrl"].ToString(), agentId);
+            string separator = returnUrl.Contains('?', StringComparison.Ordinal) ? "&" : "?";
+            string confirmText = form["confirmText"].ToString();
+
+            if (!string.Equals(confirmText.Trim(), "RESTART", StringComparison.OrdinalIgnoreCase))
+                return Results.Redirect($"{returnUrl}{separator}rebootStatus=confirm");
+
+            try
+            {
+                if (!await service.AgentExistsAsync(agentId, ct))
+                    return Results.Redirect($"{returnUrl}{separator}rebootStatus=notfound");
+
+                bool queued = listener.RequestReboot(agentId);
+                return Results.Redirect($"{returnUrl}{separator}rebootStatus={(queued ? "scheduled" : "offline")}");
+            }
+            catch (OperationCanceledException)
+            {
+                return Results.Redirect($"{returnUrl}{separator}rebootStatus=timeout");
+            }
+        });
+
         group.MapPost("/agents/{agentId}/delete", async (
             string agentId,
             HttpRequest request,
