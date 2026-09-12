@@ -1,10 +1,12 @@
 @inherits LayoutComponentBase
-@inject NavigationManager Navigation
+@inject AuthenticationStateProvider AuthenticationStateProvider
 
 <div class="app-shell">
     <header class="top-nav top-nav-extended">
         <div class="container nav-row nav-row-main">
-            <div class="brand" @onclick="@(() => Navigation.NavigateTo("/"))">StatMaster</div>
+            <a class="brand" href="/" title="Dashboard">
+                <img class="brand-logo" src="img/statmaster-logo.png" alt="StatMaster" />
+            </a>
 
             <div class="nav-search">
                 <input placeholder="Search agents..." />
@@ -15,14 +17,12 @@
 
                 <div class="account-menu-wrap">
                     <details class="account-menu-details">
-                        <summary class="avatar-btn" title="Account">AD</summary>
+                        <summary class="avatar-btn" title="@_username">@_initials</summary>
                         <div class="account-menu">
-                            <button type="button" class="account-menu-item">
-                                Profile (coming soon)
-                            </button>
-                            <button type="button" class="account-menu-item">
-                                Logout (coming soon)
-                            </button>
+                            <a class="account-menu-item" href="/profile">Profile</a>
+                            <form method="post" action="/auth/logout">
+                                <button type="submit" class="account-menu-item">Logout</button>
+                            </form>
                         </div>
                     </details>
                 </div>
@@ -33,3 +33,20 @@
         @Body
     </main>
 </div>
+
+@code {
+    private string _username = "admin";
+    private string _initials = "AD";
+
+    protected override async Task OnInitializedAsync()
+    {
+        var state = await AuthenticationStateProvider.GetAuthenticationStateAsync();
+        string name = state.User.Identity?.Name ?? string.Empty;
+        if (!string.IsNullOrWhiteSpace(name))
+            _username = name;
+
+        _initials = _username.Trim().Length >= 2
+            ? _username.Trim()[..2].ToUpperInvariant()
+            : _username.Trim().ToUpperInvariant();
+    }
+}

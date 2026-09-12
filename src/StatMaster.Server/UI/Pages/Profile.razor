@@ -1,0 +1,188 @@
+@page "/profile"
+@attribute [Authorize(Policy = "DashboardAccess")]
+@inject AdminUserService AdminUsers
+@inject AuthenticationStateProvider AuthenticationStateProvider
+
+<h2>Profile</h2>
+<p class="muted">Account settings and administrator access for this StatMaster server.</p>
+@if (!string.IsNullOrWhiteSpace(AdminStatusMessage))
+{
+    <p class="@AdminStatusClass">@AdminStatusMessage</p>
+}
+@if (!string.IsNullOrWhiteSpace(PasswordStatusMessage))
+{
+    <p class="@PasswordStatusClass">@PasswordStatusMessage</p>
+}
+
+<section class="card">
+    <h4>Signed in</h4>
+    <p class="profile-identity">
+        <span class="avatar-btn profile-avatar">@_initials</span>
+        <span>
+            <strong>@_username</strong>
+            <span class="muted">Administrator</span>
+        </span>
+    </p>
+</section>
+
+<div class="profile-split">
+    <section class="card">
+        <h4>Change password</h4>
+        <p class="muted">Minimum 8 characters. Use this for your own account.</p>
+        <form method="post" action="/api/admins/change-password">
+            <input type="hidden" name="returnUrl" value="/profile" />
+            <div class="field">
+                <label>Current password</label>
+                <input type="password" name="oldPassword" autocomplete="current-password" />
+            </div>
+            <div class="field">
+                <label>New password</label>
+                <input type="password" name="newPassword" autocomplete="new-password" />
+            </div>
+            <div class="field">
+                <label>Confirm new password</label>
+                <input type="password" name="confirmPassword" autocomplete="new-password" />
+            </div>
+            <button class="btn-primary" type="submit">Update password</button>
+        </form>
+    </section>
+
+    <section class="card">
+        <h4>Add administrator</h4>
+        <p class="muted">They sign in with this username and must change the password on first login.</p>
+        <form method="post" action="/api/admins/create">
+            <input type="hidden" name="returnUrl" value="/profile" />
+            <div class="field">
+                <label>Username</label>
+                <input name="username" maxlength="32" autocomplete="off" />
+            </div>
+            <div class="field">
+                <label>Temporary password</label>
+                <input type="password" name="password" autocomplete="new-password" />
+            </div>
+            <div class="field">
+                <label>Confirm password</label>
+                <input type="password" name="confirmPassword" autocomplete="new-password" />
+            </div>
+            <button class="btn-primary" type="submit">Add administrator</button>
+        </form>
+    </section>
+</div>
+
+<section class="card">
+    <h4>Administrators</h4>
+    <p class="muted">Everyone in this list can open the panel and manage agents. You cannot remove your own account or the last remaining admin.</p>
+    @if (_users.Count == 0)
+    {
+        <p class="muted">No administrators found.</p>
+    }
+    else
+    {
+        <div class="table-wrap">
+            <table>
+                <thead>
+                    <tr>
+                        <th>Username</th>
+                        <th>Status</th>
+                        <th>Created</th>
+                        <th></th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var user in _users)
+                    {
+                        <tr>
+                            <td>
+                                @user.Username
+                                @if (user.IsCurrentUser)
+                                {
+                                    <span class="you-badge">you</span>
+                                }
+                            </td>
+                            <td>
+                                @(user.MustChangePassword ? "Must change password" : "Active")
+                            </td>
+                            <td>@UiTime.Format(user.CreatedAtUtc)</td>
+                            <td>
+                                @if (CanRemove(user))
+                                {
+                                    <form method="post" action="@($"/api/admins/{user.Id}/delete")">
+                                        <input type="hidden" name="returnUrl" value="/profile" />
+                                        <button class="btn-danger" type="submit">Remove</button>
+                                    </form>
+                                }
+                                else
+                                {
+                                    <button class="btn-danger" type="button" disabled>Remove</button>
+                                }
+                            </td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+    }
+</section>
+
+@code {
+    [Parameter, SupplyParameterFromQuery(Name = "adminStatus")] public string? AdminStatus { get; set; }
+    [Parameter, SupplyParameterFromQuery(Name = "passwordStatus")] public string? PasswordStatus { get; set; }
+
+    private string _username = string.Empty;
+    private string _initials = "AD";
+    private IReadOnlyList<AdminUserDto> _users = Array.Empty<AdminUserDto>();
+
+    protected override async Task OnInitializedAsync()
+    {
+        var state = await AuthenticationStateProvider.GetAuthenticationStateAsync();
+        _username = state.User.Identity?.Name ?? string.Empty;
+        _initials = ToInitials(_username);
+        _users = await AdminUsers.GetUsersAsync(_username);
+    }
+
+    private bool CanRemove(AdminUserDto user)
+    {
+        return !user.IsCurrentUser && _users.Count > 1;
+    }
+
+    private string AdminStatusClass =>
+        AdminStatus is "created" or "deleted" ? "ok-text" : "error-text";
+
+    private string PasswordStatusClass =>
+        string.Equals(PasswordStatus, "saved", StringComparison.OrdinalIgnoreCase) ? "ok-text" : "error-text";
+
+    private string AdminStatusMessage =>
+        AdminStatus?.ToLowerInvariant() switch
+        {
+            "created" => "Administrator added. They must change the password on first login.",
+            "duplicate" => "That username already exists.",
+            "invalid-user" => "Username must be 3-32 characters: letters, digits, dot, underscore, or hyphen.",
+            "invalid-pass" => "Password must be at least 8 characters.",
+            "mismatch" => "Password and confirmation do not match.",
+            "deleted" => "Administrator removed.",
+            "self" => "You cannot remove your own account.",
+            "last" => "At least one administrator must remain.",
+            "notfound" => "Administrator was not found.",
+            "timeout" => "Request timed out. Try again.",
+            _ => string.Empty
+        };
+
+    private string PasswordStatusMessage =>
+        PasswordStatus?.ToLowerInvariant() switch
+        {
+            "saved" => "Password updated.",
+            "old" => "Current password is invalid.",
+            "mismatch" => "New password and confirmation do not match.",
+            "invalid" => "New password must be at least 8 characters.",
+            "timeout" => "Request timed out. Try again.",
+            _ => string.Empty
+        };
+
+    private static string ToInitials(string username)
+    {
+        string trimmed = username.Trim();
+        if (trimmed.Length >= 2)
+            return trimmed[..2].ToUpperInvariant();
+        return string.IsNullOrEmpty(trimmed) ? "AD" : trimmed.ToUpperInvariant();
+    }
+}
