@@ -1,0 +1,112 @@
+<mxfile host="app.diagrams.net" modified="2026-05-11T17:15:00.000Z" agent="Codex" version="24.7.17">
+  <diagram id="statmaster-flow" name="StatMaster Flow">
+    <mxGraphModel dx="1400" dy="900" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="1800" pageHeight="1000" math="0" shadow="0">
+      <root>
+        <mxCell id="0" />
+        <mxCell id="1" parent="0" />
+        <mxCell id="2" value="Blazor Panel (Admin)" style="swimlane;rounded=1;whiteSpace=wrap;html=1;startSize=28;" vertex="1" parent="1">
+          <mxGeometry x="20" y="40" width="300" height="420" as="geometry" />
+        </mxCell>
+        <mxCell id="3" value="StatMaster.Server (ASP.NET + TLS Listener)" style="swimlane;rounded=1;whiteSpace=wrap;html=1;startSize=28;" vertex="1" parent="1">
+          <mxGeometry x="360" y="40" width="640" height="860" as="geometry" />
+        </mxCell>
+        <mxCell id="4" value="StatMaster.Agent (Windows)" style="swimlane;rounded=1;whiteSpace=wrap;html=1;startSize=28;" vertex="1" parent="1">
+          <mxGeometry x="1040" y="40" width="640" height="860" as="geometry" />
+        </mxCell>
+        <mxCell id="10" value="1) Admin chooses key&#xa;Example: cpu.util or system.hostname" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#0b57d0;strokeColor=#0842a0;fontColor=#ffffff;strokeWidth=2;" vertex="1" parent="2">
+          <mxGeometry x="20" y="60" width="260" height="90" as="geometry" />
+        </mxCell>
+        <mxCell id="11" value="2) Optional: live refresh request" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#0b57d0;strokeColor=#0842a0;fontColor=#ffffff;strokeWidth=2;" vertex="1" parent="2">
+          <mxGeometry x="20" y="180" width="260" height="70" as="geometry" />
+        </mxCell>
+        <mxCell id="20" value="A) TLS Listener accepts connection" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#137333;strokeColor=#0f5f29;fontColor=#ffffff;strokeWidth=2;" vertex="1" parent="3">
+          <mxGeometry x="20" y="60" width="280" height="70" as="geometry" />
+        </mxCell>
+        <mxCell id="21" value="B) AgentSessionManager registers session&#xa;(agentId, stream, state)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#137333;strokeColor=#0f5f29;fontColor=#ffffff;strokeWidth=2;" vertex="1" parent="3">
+          <mxGeometry x="20" y="150" width="300" height="90" as="geometry" />
+        </mxCell>
+        <mxCell id="22" value="C) Build MetricRequest frame&#xa;type=MetricRequest&#xa;payload=key UTF-8" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e37400;strokeColor=#b95d00;fontColor=#ffffff;strokeWidth=2;" vertex="1" parent="3">
+          <mxGeometry x="20" y="300" width="300" height="110" as="geometry" />
+        </mxCell>
+        <mxCell id="23" value="D) Send request on existing TLS stream&#xa;(server writes, agent reads)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e37400;strokeColor=#b95d00;fontColor=#ffffff;strokeWidth=2;" vertex="1" parent="3">
+          <mxGeometry x="20" y="430" width="300" height="90" as="geometry" />
+        </mxCell>
+        <mxCell id="24" value="E) Receive MetricResponse frame&#xa;(value or error)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#c26401;strokeColor=#9e4f00;fontColor=#ffffff;strokeWidth=2;" vertex="1" parent="3">
+          <mxGeometry x="20" y="560" width="300" height="80" as="geometry" />
+        </mxCell>
+        <mxCell id="25" value="F) Persist metric (SQLite/EF Core)&#xa;and update in-memory last value" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#b3261e;strokeColor=#8f1f19;fontColor=#ffffff;strokeWidth=2;" vertex="1" parent="3">
+          <mxGeometry x="20" y="660" width="300" height="90" as="geometry" />
+        </mxCell>
+        <mxCell id="26" value="G) Push update to UI via SignalR" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#7e57c2;strokeColor=#6344a0;fontColor=#ffffff;strokeWidth=2;" vertex="1" parent="3">
+          <mxGeometry x="20" y="770" width="300" height="70" as="geometry" />
+        </mxCell>
+        <mxCell id="27" value="FrameCodec on server:&#xa;[type:2B][length:4B][payload]" style="shape=note;whiteSpace=wrap;html=1;fillColor=#e37400;strokeColor=#b95d00;fontColor=#ffffff;strokeWidth=2;" vertex="1" parent="3">
+          <mxGeometry x="360" y="320" width="250" height="90" as="geometry" />
+        </mxCell>
+        <mxCell id="30" value="a) Agent starts and connects outbound TCP to server" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#137333;strokeColor=#0f5f29;fontColor=#ffffff;strokeWidth=2;" vertex="1" parent="4">
+          <mxGeometry x="20" y="60" width="300" height="80" as="geometry" />
+        </mxCell>
+        <mxCell id="31" value="b) TLS handshake + Hello frame" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#137333;strokeColor=#0f5f29;fontColor=#ffffff;strokeWidth=2;" vertex="1" parent="4">
+          <mxGeometry x="20" y="160" width="300" height="70" as="geometry" />
+        </mxCell>
+        <mxCell id="32" value="c) Read MetricRequest(key)&#xa;from stream" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e37400;strokeColor=#b95d00;fontColor=#ffffff;strokeWidth=2;" vertex="1" parent="4">
+          <mxGeometry x="20" y="300" width="300" height="80" as="geometry" />
+        </mxCell>
+        <mxCell id="33" value="d) Lookup key in registry&#xa;Dictionary&lt;string, Func&lt;string&gt;&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e37400;strokeColor=#b95d00;fontColor=#ffffff;strokeWidth=2;" vertex="1" parent="4">
+          <mxGeometry x="20" y="400" width="300" height="90" as="geometry" />
+        </mxCell>
+        <mxCell id="34" value="e) Execute function/script&#xa;Examples:&#xa;- system.hostname&#xa;- cpu.util" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#c26401;strokeColor=#9e4f00;fontColor=#ffffff;strokeWidth=2;" vertex="1" parent="4">
+          <mxGeometry x="20" y="510" width="300" height="110" as="geometry" />
+        </mxCell>
+        <mxCell id="35" value="f) Build MetricResponse&#xa;OK value OR ERR unknown-key" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#c26401;strokeColor=#9e4f00;fontColor=#ffffff;strokeWidth=2;" vertex="1" parent="4">
+          <mxGeometry x="20" y="640" width="300" height="90" as="geometry" />
+        </mxCell>
+        <mxCell id="36" value="g) Send MetricResponse&#xa;on same TLS connection" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#b3261e;strokeColor=#8f1f19;fontColor=#ffffff;strokeWidth=2;" vertex="1" parent="4">
+          <mxGeometry x="20" y="750" width="300" height="80" as="geometry" />
+        </mxCell>
+        <mxCell id="37" value="FrameCodec on agent:&#xa;[type:2B][length:4B][payload]" style="shape=note;whiteSpace=wrap;html=1;fillColor=#e37400;strokeColor=#b95d00;fontColor=#ffffff;strokeWidth=2;" vertex="1" parent="4">
+          <mxGeometry x="360" y="320" width="250" height="90" as="geometry" />
+        </mxCell>
+        <mxCell id="40" value="Admin request key" style="endArrow=block;html=1;rounded=0;strokeColor=#1a73e8;strokeWidth=3;fontSize=16;fontStyle=1;fontColor=#000000;labelBackgroundColor=#ffffff;labelBorderColor=#000000;spacing=8;" edge="1" parent="1" source="10" target="22">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="41" value="Real-time query" style="endArrow=block;html=1;rounded=0;dashed=1;strokeColor=#1a73e8;strokeWidth=3;fontSize=16;fontStyle=1;fontColor=#000000;labelBackgroundColor=#ffffff;labelBorderColor=#000000;spacing=8;" edge="1" parent="1" source="11" target="22">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="42" value="Outbound connect + TLS" style="endArrow=block;html=1;rounded=0;strokeColor=#188038;strokeWidth=3;fontSize=16;fontStyle=1;fontColor=#000000;labelBackgroundColor=#ffffff;labelBorderColor=#000000;spacing=8;" edge="1" parent="1" source="30" target="20">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="43" value="MetricRequest(key)" style="endArrow=block;html=1;rounded=0;strokeColor=#f9ab00;strokeWidth=3;fontSize=16;fontStyle=1;fontColor=#000000;labelBackgroundColor=#ffffff;labelBorderColor=#000000;spacing=8;" edge="1" parent="1" source="23" target="32">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="44" value="MetricResponse(value/error)" style="endArrow=block;html=1;rounded=0;strokeColor=#f29900;strokeWidth=3;fontSize=16;fontStyle=1;fontColor=#000000;labelBackgroundColor=#ffffff;labelBorderColor=#000000;spacing=8;" edge="1" parent="1" source="36" target="24">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="45" value="SignalR push" style="endArrow=block;html=1;rounded=0;strokeColor=#9334e6;strokeWidth=3;fontSize=16;fontStyle=1;fontColor=#000000;labelBackgroundColor=#ffffff;labelBorderColor=#000000;spacing=8;" edge="1" parent="1" source="26" target="11">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="46" value="session active" style="endArrow=none;html=1;dashed=1;strokeColor=#5f6368;strokeWidth=3;fontSize=16;fontStyle=1;fontColor=#000000;labelBackgroundColor=#ffffff;labelBorderColor=#000000;spacing=8;" edge="1" parent="1" source="21" target="23">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="47" value="key lookup" style="endArrow=block;html=1;rounded=0;strokeColor=#ff6d01;strokeWidth=3;fontSize=16;fontStyle=1;fontColor=#000000;labelBackgroundColor=#ffffff;labelBorderColor=#000000;spacing=8;" edge="1" parent="1" source="32" target="33">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="48" value="execute" style="endArrow=block;html=1;rounded=0;strokeColor=#ff6d01;strokeWidth=3;fontSize=16;fontStyle=1;fontColor=#000000;labelBackgroundColor=#ffffff;labelBorderColor=#000000;spacing=8;" edge="1" parent="1" source="33" target="34">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="49" value="pack response" style="endArrow=block;html=1;rounded=0;strokeColor=#ff6d01;strokeWidth=3;fontSize=16;fontStyle=1;fontColor=#000000;labelBackgroundColor=#ffffff;labelBorderColor=#000000;spacing=8;" edge="1" parent="1" source="34" target="35">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="50" value="write response" style="endArrow=block;html=1;rounded=0;strokeColor=#ff6d01;strokeWidth=3;fontSize=16;fontStyle=1;fontColor=#000000;labelBackgroundColor=#ffffff;labelBorderColor=#000000;spacing=8;" edge="1" parent="1" source="35" target="36">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="51" value="store + broadcast" style="endArrow=block;html=1;rounded=0;strokeColor=#c5221f;strokeWidth=3;fontSize=16;fontStyle=1;fontColor=#000000;labelBackgroundColor=#ffffff;labelBorderColor=#000000;spacing=8;" edge="1" parent="1" source="24" target="25">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="52" value="" style="endArrow=block;html=1;rounded=0;strokeColor=#c5221f;strokeWidth=3;fontSize=16;fontStyle=1;fontColor=#000000;labelBackgroundColor=#ffffff;labelBorderColor=#000000;spacing=8;" edge="1" parent="1" source="25" target="26">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+      </root>
+    </mxGraphModel>
+  </diagram>
+</mxfile>

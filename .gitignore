@@ -69,9 +69,6 @@ nCrunchTemp_*
 .env
 .env.*
 *.env
-appsettings.*.json
-!appsettings.json
-**/appsettings.Development.json
 **/local.settings.json
 .azurite/
 
@@ -86,14 +83,20 @@ ehthumbs.db
 publish/
 
 #Documentation
-Docs/
+ARCITECTURE.md
+PROMPT.md
+BACKLOG.md
+THESIS_NOTES_PROTOCOL_TLS.md
 
 #Settings
-appsettings.json
-appsettings.Development.json
 
-Design StatMaster Dashboard
-certs/
+
+
+
 statmaster.db
 statmaster.db-wal
 statmaster.db-shm
+
+statmaster-dev.pfx
+statmaster-server.cer
+statmaster-server.pfx
